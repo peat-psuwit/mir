@@ -33,6 +33,7 @@
 
 namespace mi = mir::input;
 namespace mf = mir::frontend;
+namespace ms = mir::scene;
 namespace mg = mir::graphics;
 namespace geom = mir::geometry;
 
@@ -113,11 +114,11 @@ struct mi::BasicSeat::OutputTracker : mg::DisplayConfigurationObserver
     void base_configuration_updated(std::shared_ptr<mg::DisplayConfiguration const> const&) override
     {}
 
-    void session_configuration_applied(std::shared_ptr<mf::Session> const&,
+    void session_configuration_applied(std::shared_ptr<ms::Session> const&,
         std::shared_ptr<mg::DisplayConfiguration> const&) override
     {}
 
-    void session_configuration_removed(std::shared_ptr<mf::Session> const&) override
+    void session_configuration_removed(std::shared_ptr<ms::Session> const&) override
     {}
 
     void configuration_failed(
@@ -128,6 +129,11 @@ struct mi::BasicSeat::OutputTracker : mg::DisplayConfigurationObserver
     void catastrophic_configuration_error(
         std::shared_ptr<mg::DisplayConfiguration const> const&,
         std::exception const&) override
+    {}
+
+    void configuration_updated_for_session(
+        std::shared_ptr<ms::Session> const&,
+        std::shared_ptr<mg::DisplayConfiguration const> const&) override
     {}
 
     geom::Rectangle get_bounding_rectangle() const

@@ -20,9 +20,9 @@
 
 #include "mir/input/scene.h"
 #include "mir/input/surface.h"
-#include "mir/scene/observer.h"
+#include "mir/scene/null_observer.h"
 #include "mir/scene/surface.h"
-#include "mir/scene/surface_observer.h"
+#include "mir/scene/null_surface_observer.h"
 #include "mir/events/event_builders.h"
 #include "mir_toolkit/mir_cookie.h"
 
@@ -40,12 +40,12 @@ namespace geom = mir::geometry;
 namespace
 {
 struct InputDispatcherSceneObserver :
-    public ms::Observer,
-    public ms::SurfaceObserver,
+    public ms::NullObserver,
+    public ms::NullSurfaceObserver,
     public std::enable_shared_from_this<InputDispatcherSceneObserver>
 {
     InputDispatcherSceneObserver(
-        std::function<void(ms::Surface*)> const& on_removed,
+        std::function<void(std::shared_ptr<ms::Surface>)> const& on_removed,
         std::function<void(ms::Surface const*)> const& on_surface_moved,
         std::function<void()> const& on_surface_resized)
         : on_removed(on_removed),
@@ -53,27 +53,20 @@ struct InputDispatcherSceneObserver :
           on_surface_resized{on_surface_resized}
     {
     }
-    void surface_added(ms::Surface* surface) override
+
+    void surface_added(std::shared_ptr<ms::Surface> const& surface) override
     {
         surface->add_observer(shared_from_this());
     }
-    void surface_removed(ms::Surface* surface) override
+
+    void surface_removed(std::shared_ptr<ms::Surface> const& surface) override
     {
         on_removed(surface);
     }
-    void surfaces_reordered() override
-    {
-    }
-    void scene_changed() override
-    {
-    }
 
-    void surface_exists(ms::Surface* surface) override
+    void surface_exists(std::shared_ptr<ms::Surface> const& surface) override
     {
         surface->add_observer(shared_from_this());
-    }
-    void end_observation() override
-    {
     }
 
     void attrib_changed(ms::Surface const*, MirWindowAttrib /*attrib*/, int /*value*/) override
@@ -81,7 +74,7 @@ struct InputDispatcherSceneObserver :
         // TODO: Do we need to listen to visibility events?
     }
 
-    void resized_to(ms::Surface const*, mir::geometry::Size const& /*size*/) override
+    void content_resized_to(ms::Surface const*, mir::geometry::Size const& /*size*/) override
     {
         on_surface_resized();
     }
@@ -96,69 +89,7 @@ struct InputDispatcherSceneObserver :
         // TODO: Do we need to listen to this?
     }
 
-    void frame_posted(ms::Surface const*, int, mir::geometry::Size const&) override
-    {
-
-    }
-
-    void alpha_set_to(ms::Surface const*, float) override
-    {
-
-    }
-
-    void orientation_set_to(ms::Surface const*, MirOrientation) override
-    {
-
-    }
-
-    void transformation_set_to(ms::Surface const*, glm::mat4 const&) override
-    {
-
-    }
-
-    void reception_mode_set_to(ms::Surface const*, mir::input::InputReceptionMode) override
-    {
-    }
-
-    void cursor_image_set_to(ms::Surface const*, mir::graphics::CursorImage const&) override
-    {
-    }
-
-    void client_surface_close_requested(ms::Surface const*) override
-    {
-    }
-
-    void keymap_changed(
-        ms::Surface const*,
-        MirInputDeviceId,
-        std::string const&,
-        std::string const&,
-        std::string const&,
-        std::string const&) override
-    {
-    }
-
-    void renamed(ms::Surface const*, char const*) override
-    {
-    }
-
-    void cursor_image_removed(ms::Surface const*) override
-    {
-    }
-
-    void placed_relative(ms::Surface const*, mir::geometry::Rectangle const&) override
-    {
-    }
-
-    void input_consumed(ms::Surface const*, MirEvent const*) override
-    {
-    }
-
-    void start_drag_and_drop(ms::Surface const*, std::vector<uint8_t> const&) override
-    {
-    }
-
-    std::function<void(ms::Surface*)> const on_removed;
+    std::function<void(std::shared_ptr<ms::Surface>)> const on_removed;
     std::function<void(ms::Surface const*)> const on_surface_moved;
     std::function<void()> const on_surface_resized;
 };
@@ -221,14 +152,9 @@ mi::SurfaceInputDispatcher::SurfaceInputDispatcher(std::shared_ptr<mi::Scene> co
       started(false)
 {
     scene_observer = std::make_shared<InputDispatcherSceneObserver>(
-        [this](ms::Surface* s){surface_removed(s);},
-        std::bind(
-            std::mem_fn(&SurfaceInputDispatcher::surface_moved),
-            this,
-            std::placeholders::_1),
-        std::bind(
-            std::mem_fn(&SurfaceInputDispatcher::surface_resized),
-            this));
+        [this](std::shared_ptr<ms::Surface> const& s) { surface_removed(s); },
+        [this](scene::Surface const* s) { surface_moved(s); },
+        [this] { surface_resized(); });
     scene->add_observer(scene_observer);
 }
 
@@ -256,12 +182,12 @@ bool compare_surfaces(std::shared_ptr<mi::Surface> const& input_surface, ms::Sur
 }
 }
 
-void mi::SurfaceInputDispatcher::surface_removed(ms::Surface *surface)
+void mi::SurfaceInputDispatcher::surface_removed(std::shared_ptr<ms::Surface> surface)
 {
     std::lock_guard<std::mutex> lg(dispatcher_mutex);
 
     auto strong_focus = focus_surface.lock();
-    if (strong_focus && compare_surfaces(strong_focus, surface))
+    if (strong_focus && compare_surfaces(strong_focus, surface.get()))
     {
         set_focus_locked(lg, nullptr);
     }
@@ -269,16 +195,16 @@ void mi::SurfaceInputDispatcher::surface_removed(ms::Surface *surface)
     for (auto& kv : pointer_state_by_id)
     {
         auto& state = kv.second;
-        if (compare_surfaces(state.current_target, surface))
+        if (compare_surfaces(state.current_target, surface.get()))
             state.current_target.reset();
-        if (compare_surfaces(state.gesture_owner, surface))
+        if (compare_surfaces(state.gesture_owner, surface.get()))
             state.gesture_owner.reset();
     }
 
     for (auto& kv : touch_state_by_id)
     {
         auto& state = kv.second;
-        if (compare_surfaces(state.gesture_owner, surface))
+        if (compare_surfaces(state.gesture_owner, surface.get()))
             state.gesture_owner.reset();
     }
 }

@@ -9,7 +9,6 @@ elseif(MIRAL_COMPILE_WITH_W_NO_PEDANTIC)
 endif()
 
 include_directories(
-    ${PROJECT_SOURCE_DIR}/src/miral
     ${GMOCK_INCLUDE_DIR}
     ${GTEST_INCLUDE_DIR}
 )
@@ -19,28 +18,16 @@ set(CMAKE_C_FLAGS ${NO_NO_LTO_FLAGS})
 string(REPLACE "-fno-lto" "" NO_NO_LTO_FLAGS ${CMAKE_CXX_FLAGS})
 set(CMAKE_CXX_FLAGS ${NO_NO_LTO_FLAGS})
 
-add_library(miral-test-framework STATIC
-    test_server.cpp     ../include/miral/test_server.h
-)
-
-target_include_directories(miral-test-framework PUBLIC ../include/miral)
-
-target_link_libraries(miral-test-framework
-PUBLIC
-    ${GTEST_BOTH_LIBRARIES}
-    ${GMOCK_LIBRARIES}
-    miral
-    mir-test-assist
-PRIVATE
-    miral-internal
-)
+if (MIR_BUILD_INTERPROCESS_TESTS)
+    list(APPEND MIRAL_TEST_SOURCES window_info.cpp)
+endif()
 
 mir_add_wrapped_executable(miral-test-internal NOINSTALL
     mru_window_list.cpp
     active_outputs.cpp
     command_line_option.cpp
     select_active_window.cpp
-    window_placement.cpp
+    popup_window_placement.cpp
     window_placement_anchors_to_parent.cpp
     drag_active_window.cpp
     modify_window_state.cpp
@@ -49,13 +36,21 @@ mir_add_wrapped_executable(miral-test-internal NOINSTALL
     raise_tree.cpp
     static_display_config.cpp
     client_mediated_gestures.cpp
-    window_info.cpp
-    test_window_manager_tools.h
+    test_window_manager_tools.cpp           test_window_manager_tools.h
+    depth_layer.cpp
+    output_updates.cpp
+    application_zone.cpp
+    initial_window_placement.cpp
+    window_placement_attached.cpp
+    window_placement_fullscreen.cpp
+    ${MIRAL_TEST_SOURCES}
 )
 
 set_source_files_properties(static_display_config.cpp PROPERTIES COMPILE_FLAGS
     "${CMAKE_CXXFLAGS} -I ${PROJECT_SOURCE_DIR}/src/include/common")
 
+target_include_directories(miral-test-internal
+    PRIVATE ${PROJECT_SOURCE_DIR}/src/miral)
 
 target_link_libraries(miral-test-internal
     ${GTEST_BOTH_LIBRARIES}
@@ -75,6 +70,7 @@ mir_add_wrapped_executable(miral-test NOINSTALL
     wayland_extensions.cpp
     workspaces.cpp
     drag_and_drop.cpp
+    zone.cpp
     server_example_decoration.cpp server_example_decoration.h
     org_kde_kwin_server_decoration.c org_kde_kwin_server_decoration.h
     generated/server-decoration_wrapper.cpp generated/server-decoration_wrapper.h
@@ -83,7 +79,8 @@ mir_add_wrapped_executable(miral-test NOINSTALL
 set_source_files_properties(server_example_decoration.cpp PROPERTIES COMPILE_FLAGS "-I${CMAKE_CURRENT_SOURCE_DIR}/generated/")
 
 target_link_libraries(miral-test
-    miral-test-framework
+    mir-test-assist
+    ${WAYLAND_CLIENT_LDFLAGS} ${WAYLAND_CLIENT_LIBRARIES}
     ${UUID_LDFLAGS} ${UUID_LIBRARIES}
 )
 

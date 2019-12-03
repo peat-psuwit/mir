@@ -98,7 +98,8 @@ ms::SessionManager::SessionManager(
     std::shared_ptr<SessionListener> const& session_listener,
     std::shared_ptr<graphics::Display const> const& display,
     std::shared_ptr<ApplicationNotRespondingDetector> const& anr_detector,
-    std::shared_ptr<graphics::GraphicBufferAllocator> const& allocator) :
+    std::shared_ptr<graphics::GraphicBufferAllocator> const& allocator,
+    std::shared_ptr<ObserverRegistrar<graphics::DisplayConfigurationObserver>> const& display_config_registrar) :
     observers(std::make_shared<SessionObservers>()),
     surface_stack(surface_stack),
     surface_factory(surface_factory),
@@ -109,7 +110,8 @@ ms::SessionManager::SessionManager(
     session_listener(session_listener),
     display{display},
     anr_detector{anr_detector},
-    allocator(allocator)
+    allocator{allocator},
+    display_config_registrar{display_config_registrar}
 {
     observers->register_interest(session_listener);
 }
@@ -147,7 +149,6 @@ std::shared_ptr<ms::Session> ms::SessionManager::open_session(
             name,
             snapshot_strategy,
             observers,
-            *display->configuration(),
             sender,
             allocator);
 
@@ -177,15 +178,13 @@ void ms::SessionManager::unset_focus()
 
 void ms::SessionManager::close_session(std::shared_ptr<Session> const& session)
 {
-    auto scene_session = std::dynamic_pointer_cast<Session>(session);
-
     anr_detector->unregister_session(session.get());
 
-    session_event_sink->handle_session_stopping(scene_session);
+    session_event_sink->handle_session_stopping(session);
 
-    observers->stopping(scene_session);
+    observers->stopping(session);
 
-    app_container->remove_session(scene_session);
+    app_container->remove_session(session);
 }
 
 

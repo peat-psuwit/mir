@@ -22,6 +22,9 @@
 #include "mir/scene/session_container.h"
 #include "mir/scene/session_listener.h"
 #include "mir/scene/null_session_listener.h"
+#include "mir/graphics/display_configuration_observer.h"
+#include "mir/compositor/buffer_stream.h"
+#include "mir/scene/null_surface_observer.h"
 
 #include "src/server/scene/basic_surface.h"
 #include "src/include/server/mir/scene/session_event_sink.h"
@@ -38,6 +41,7 @@
 #include "mir/test/doubles/null_application_not_responding_detector.h"
 #include "mir/test/doubles/stub_display.h"
 #include "mir/test/doubles/stub_buffer_allocator.h"
+#include "mir/test/doubles/stub_observer_registrar.h"
 
 #include "mir/test/fake_shared.h"
 
@@ -48,6 +52,7 @@ namespace mf = mir::frontend;
 namespace mi = mir::input;
 namespace ms = mir::scene;
 namespace mg = mir::graphics;
+namespace mc = mir::compositor;
 namespace geom = mir::geometry;
 namespace mt = mir::test;
 namespace mtd = mir::test::doubles;
@@ -64,6 +69,7 @@ struct MockSessionEventSink : public ms::SessionEventSink
 struct SessionManagerSetup : public testing::Test
 {
     std::shared_ptr<ms::Surface> dummy_surface = std::make_shared<ms::BasicSurface>(
+        nullptr /* session */,
         std::string("stub"),
         geom::Rectangle{{},{}},
         mir_pointer_unconfined,
@@ -78,6 +84,7 @@ struct SessionManagerSetup : public testing::Test
     mtd::StubDisplay display{2};
     mtd::NullEventSink event_sink;
     mtd::StubBufferAllocator allocator;
+    mtd::StubObserverRegistrar<mir::graphics::DisplayConfigurationObserver> display_config_registrar;
 
     ms::SessionManager session_manager{mt::fake_shared(surface_stack),
         mt::fake_shared(stub_surface_factory),
@@ -88,7 +95,8 @@ struct SessionManagerSetup : public testing::Test
         mt::fake_shared(session_listener),
         mt::fake_shared(display),
         std::make_shared<mtd::NullANRDetector>(),
-        mt::fake_shared(allocator)};
+        mt::fake_shared(allocator),
+        mt::fake_shared(display_config_registrar)};
 };
 
 }
@@ -103,6 +111,7 @@ struct SessionManagerSessionListenerSetup : public testing::Test
     mtd::StubSurfaceFactory stub_surface_factory;
     mtd::StubDisplay display{2};
     mtd::StubBufferAllocator allocator;
+    mtd::StubObserverRegistrar<mir::graphics::DisplayConfigurationObserver> display_config_registrar;
 
     ms::SessionManager session_manager{
         mt::fake_shared(surface_stack),
@@ -114,7 +123,8 @@ struct SessionManagerSessionListenerSetup : public testing::Test
         mt::fake_shared(session_listener),
         mt::fake_shared(display),
         std::make_shared<mtd::NullANRDetector>(),
-        mt::fake_shared(allocator)};
+        mt::fake_shared(allocator),
+        mt::fake_shared(display_config_registrar)};
 };
 }
 
@@ -160,16 +170,16 @@ TEST_F(SessionManagerSessionListenerSetup, additional_listeners_receive_focus_ch
 TEST_F(SessionManagerSessionListenerSetup, additional_listeners_receive_surface_creation)
 {
     using namespace ::testing;
-    mtd::NullEventSink event_sink;
+    ms::NullSurfaceObserver observer;
     auto additional_listener = std::make_shared<testing::NiceMock<mtd::MockSessionListener>>();
     EXPECT_CALL(*additional_listener, starting(_)).Times(1);
     EXPECT_CALL(*additional_listener, surface_created(_,_)).Times(1);
 
     session_manager.add_listener(additional_listener);
     auto session = session_manager.open_session(__LINE__, "XPlane", std::shared_ptr<mf::EventSink>());
-    auto bs = session->create_buffer_stream(
-        mg::BufferProperties{{640, 480}, mir_pixel_format_abgr_8888, mg::BufferUsage::hardware});
-    session->create_surface(ms::SurfaceCreationParameters().with_buffer_stream(bs), mt::fake_shared(event_sink));
+    auto bs = std::dynamic_pointer_cast<mc::BufferStream>(session->create_buffer_stream(
+        mg::BufferProperties{{640, 480}, mir_pixel_format_abgr_8888, mg::BufferUsage::hardware}));
+    session->create_surface(nullptr, ms::SurfaceCreationParameters().with_buffer_stream(bs), mt::fake_shared(observer));
 }
 
 namespace
@@ -183,6 +193,7 @@ struct SessionManagerSessionEventsSetup : public testing::Test
     mtd::StubSurfaceFactory stub_surface_factory;
     mtd::StubDisplay display{3};
     mtd::StubBufferAllocator allocator;
+    mtd::StubObserverRegistrar<mir::graphics::DisplayConfigurationObserver> display_config_registrar;
 
     ms::SessionManager session_manager{
         mt::fake_shared(surface_stack),
@@ -194,7 +205,8 @@ struct SessionManagerSessionEventsSetup : public testing::Test
         mt::fake_shared(session_listener),
         mt::fake_shared(display),
         std::make_shared<mtd::NullANRDetector>(),
-        mt::fake_shared(allocator)};
+        mt::fake_shared(allocator),
+        mt::fake_shared(display_config_registrar)};
 };
 }
 

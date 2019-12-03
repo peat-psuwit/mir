@@ -1,5 +1,5 @@
 /*
- * Copyright © 2015 Canonical Ltd.
+ * Copyright © 2015-2019 Canonical Ltd.
  *
  * This program is free software: you can redistribute it and/or modify it
  * under the terms of the GNU General Public License version 2 or 3,
@@ -30,6 +30,8 @@
 
 #include <boost/throw_exception.hpp>
 
+#include <linux/input.h>
+
 namespace mf = mir::frontend;
 namespace ms = mir::scene;
 namespace msh = mir::shell;
@@ -57,8 +59,10 @@ void msh::SystemCompositorWindowManager::remove_session(std::shared_ptr<ms::Sess
 auto msh::SystemCompositorWindowManager::add_surface(
     std::shared_ptr<ms::Session> const& session,
     ms::SurfaceCreationParameters const& params,
-    std::function<mf::SurfaceId(std::shared_ptr<ms::Session> const& session, ms::SurfaceCreationParameters const& params)> const& build)
--> mf::SurfaceId
+    std::function<std::shared_ptr<scene::Surface>(
+        std::shared_ptr<ms::Session> const& session,
+        ms::SurfaceCreationParameters const& params)> const& build)
+-> std::shared_ptr<scene::Surface>
 {
     mir::geometry::Rectangle rect{params.top_left, params.size};
 
@@ -71,8 +75,7 @@ auto msh::SystemCompositorWindowManager::add_surface(
     placed_parameters.top_left = rect.top_left;
     placed_parameters.size = rect.size;
 
-    auto const result = build(session, placed_parameters);
-    auto const surface = session->surface(result);
+    auto const surface = build(session, placed_parameters);
 
     auto const session_ready_observer = std::make_shared<SurfaceReadyObserver>(
         [this](std::shared_ptr<ms::Session> const& session, std::shared_ptr<ms::Surface> const& /*surface*/)
@@ -87,7 +90,7 @@ auto msh::SystemCompositorWindowManager::add_surface(
     std::lock_guard<decltype(mutex)> lock{mutex};
     output_map[surface] = params.output_id;
 
-    return result;
+    return surface;
 }
 
 void msh::SystemCompositorWindowManager::modify_surface(
@@ -102,7 +105,7 @@ void msh::SystemCompositorWindowManager::modify_surface(
     {
         auto const output_id = modifications.output_id.value();
 
-        mir::geometry::Rectangle rect{surface->top_left(), surface->size()};
+        mir::geometry::Rectangle rect{surface->top_left(), surface->window_size()};
 
         if (display_layout->place_in_output(output_id, rect))
         {
@@ -113,13 +116,19 @@ void msh::SystemCompositorWindowManager::modify_surface(
         std::lock_guard<decltype(mutex)> lock{mutex};
         output_map[surface] = output_id;
     }
+
+    if (modifications.input_shape.is_set())
+    {
+        surface->set_input_region(modifications.input_shape.value());
+    }
 }
 
 void msh::SystemCompositorWindowManager::remove_surface(
     std::shared_ptr<ms::Session> const& session,
     std::weak_ptr<ms::Surface> const& surface)
 {
-    session->destroy_surface(surface);
+    if (auto const locked = surface.lock())
+        session->destroy_surface(locked);
 
     std::lock_guard<decltype(mutex)> lock{mutex};
     output_map.erase(surface);
@@ -135,7 +144,7 @@ void msh::SystemCompositorWindowManager::add_display(mir::geometry::Rectangle co
         {
             auto const output_id = so.second;
 
-            mir::geometry::Rectangle rect{surface->top_left(), surface->size()};
+            mir::geometry::Rectangle rect{surface->top_left(), surface->window_size()};
 
             if (display_layout->place_in_output(output_id, rect))
             {
@@ -222,4 +231,48 @@ void msh::SystemCompositorWindowManager::handle_request_resize(
     uint64_t /*timestamp*/,
     MirResizeEdge /*edge*/)
 {
+}
+
+bool mir::shell::DefaultWindowManager::handle_keyboard_event(MirKeyboardEvent const* event)
+{
+    static unsigned int const shift_states =
+        mir_input_event_modifier_alt |
+        mir_input_event_modifier_shift |
+        mir_input_event_modifier_sym |
+        mir_input_event_modifier_ctrl |
+        mir_input_event_modifier_meta;
+
+    if (mir_keyboard_event_action(event) != mir_keyboard_action_down)
+        return false;
+
+    auto const shift_state = mir_keyboard_event_modifiers(event) & shift_states;
+
+    if (shift_state != (mir_input_event_modifier_alt|mir_input_event_modifier_ctrl))
+        return false;
+
+    switch (mir_keyboard_event_scan_code(event))
+    {
+    case KEY_PAGEDOWN:
+        focus_controller->focus_next_session();
+        break;
+
+    case KEY_PAGEUP:
+        focus_controller->focus_prev_session();
+        break;
+
+    default:
+        return false;
+    };
+
+    if (auto const session = focus_controller->focused_session())
+    {
+        SurfaceSet surfaces;
+        for (auto surface = session->default_surface(); surface; surface = session->surface_after(surface))
+        {
+            if (!surfaces.insert(surface).second) break;
+        }
+        focus_controller->raise(surfaces);
+        focus_controller->set_focus_to(session, session->default_surface());
+    }
+    return true;
 }

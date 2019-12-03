@@ -49,7 +49,8 @@ class SurfaceObserver
 {
 public:
     virtual void attrib_changed(Surface const* surf, MirWindowAttrib attrib, int value) = 0;
-    virtual void resized_to(Surface const* surf, geometry::Size const& size) = 0;
+    virtual void window_resized_to(Surface const* surf, geometry::Size const& window_size) = 0;
+    virtual void content_resized_to(Surface const* surf, geometry::Size const& content_size) = 0;
     virtual void moved_to(Surface const* surf, geometry::Point const& top_left) = 0;
     virtual void hidden_set_to(Surface const* surf, bool hide) = 0;
     virtual void frame_posted(Surface const* surf, int frames_available, geometry::Size const& size) = 0;
@@ -71,6 +72,8 @@ public:
     virtual void placed_relative(Surface const* surf, geometry::Rectangle const& placement) = 0;
     virtual void input_consumed(Surface const* surf, MirEvent const* event) = 0;
     virtual void start_drag_and_drop(Surface const* surf, std::vector<uint8_t> const& handle) = 0;
+    virtual void depth_layer_set_to(Surface const* surf, MirDepthLayer depth_layer) = 0;
+    virtual void application_id_set_to(Surface const* surf, std::string const& application_id) = 0;
 
 protected:
     SurfaceObserver() = default;

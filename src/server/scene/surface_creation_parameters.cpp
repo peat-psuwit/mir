@@ -18,6 +18,7 @@
 
 #include "mir/scene/surface_creation_parameters.h"
 #include "mir/shell/surface_specification.h"
+#include "mir/compositor/buffer_stream.h"
 
 namespace mg = mir::graphics;
 namespace ms = mir::scene;
@@ -130,9 +131,10 @@ ms::SurfaceCreationParameters& ms::SurfaceCreationParameters::with_edge_attachme
     return *this;
 }
 
-ms::SurfaceCreationParameters& ms::SurfaceCreationParameters::with_buffer_stream(mf::BufferStreamId const& id)
+ms::SurfaceCreationParameters& ms::SurfaceCreationParameters::with_buffer_stream(
+    std::shared_ptr<compositor::BufferStream> const& stream)
 {
-    content_id = id;
+    content = stream;
     return *this;
 }
 
@@ -196,6 +198,14 @@ void ms::SurfaceCreationParameters::update_from(msh::SurfaceSpecification const&
         shell_chrome = that.shell_chrome;
     if (that.confine_pointer.is_set())
         confine_pointer = that.confine_pointer;
+    if (that.depth_layer.is_set())
+        depth_layer = that.depth_layer;
+    if (that.attached_edges.is_set())
+        attached_edges = that.attached_edges;
+    if (that.exclusive_rect.is_set())
+        exclusive_rect = that.exclusive_rect.value();
+    if (that.application_id.is_set())
+        application_id = that.application_id.value();
     // TODO: should SurfaceCreationParameters support cursors?
 //     if (that.cursor_image.is_set())
 //         cursor_image = that.cursor_image;
@@ -205,9 +215,10 @@ void ms::SurfaceCreationParameters::update_from(msh::SurfaceSpecification const&
 
 bool ms::operator==(
     const SurfaceCreationParameters& lhs,
-    const ms::SurfaceCreationParameters& rhs)
+    const SurfaceCreationParameters& rhs)
 {
-    return lhs.name == rhs.name &&
+    return
+        lhs.name == rhs.name &&
         lhs.size == rhs.size &&
         lhs.top_left == rhs.top_left &&
         lhs.buffer_usage == rhs.buffer_usage &&
@@ -218,12 +229,36 @@ bool ms::operator==(
         lhs.type == rhs.type &&
         lhs.preferred_orientation == rhs.preferred_orientation &&
         lhs.parent_id == rhs.parent_id &&
-        lhs.content_id == rhs.content_id;
+        lhs.content.lock() == rhs.content.lock() &&
+        lhs.aux_rect == rhs.aux_rect &&
+        lhs.edge_attachment == rhs.edge_attachment &&
+        lhs.placement_hints == rhs.placement_hints &&
+        lhs.surface_placement_gravity == rhs.surface_placement_gravity &&
+        lhs.aux_rect_placement_gravity == rhs.aux_rect_placement_gravity &&
+        lhs.aux_rect_placement_offset_x == rhs.aux_rect_placement_offset_x &&
+        lhs.aux_rect_placement_offset_y == rhs.aux_rect_placement_offset_y &&
+        lhs.parent.lock() == rhs.parent.lock() &&
+        lhs.min_width == rhs.min_width &&
+        lhs.min_height == rhs.min_height &&
+        lhs.max_width == rhs.max_width &&
+        lhs.max_height == rhs.max_height &&
+        lhs.width_inc == rhs.width_inc &&
+        lhs.height_inc == rhs.height_inc &&
+        lhs.min_aspect == rhs.min_aspect &&
+        lhs.max_aspect == rhs.max_aspect &&
+        lhs.input_shape == rhs.input_shape &&
+        lhs.shell_chrome == rhs.shell_chrome &&
+        lhs.streams == rhs.streams &&
+        lhs.confine_pointer == rhs.confine_pointer &&
+        lhs.depth_layer == rhs.depth_layer &&
+        lhs.attached_edges == rhs.attached_edges &&
+        lhs.exclusive_rect == rhs.exclusive_rect &&
+        lhs.application_id == rhs.application_id;
 }
 
 bool ms::operator!=(
     const SurfaceCreationParameters& lhs,
-    const ms::SurfaceCreationParameters& rhs)
+    const SurfaceCreationParameters& rhs)
 {
     return !(lhs == rhs);
 }

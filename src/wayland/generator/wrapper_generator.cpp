@@ -50,6 +50,8 @@ Emitter header_includes()
         empty_line,
         "#include \"mir/fd.h\"",
         "#include <wayland-server-core.h>",
+        empty_line,
+        "#include \"mir/wayland/wayland_base.h\"",
     };
 }
 
@@ -67,53 +69,21 @@ Emitter impl_includes(std::string const& protocol_name)
     };
 }
 
-Emitter post_error_helper()
-{
-    Emitter error_message = {
-        "\"Mir internal error processing %s request\",",
-        "method_name.c_str());"
-    };
-
-    return Lines{
-        "namespace",
-        "{",
-        "void internal_error_processing_request(struct wl_client* client, std::string const& method_name)",
-        Block{
-            "#if (WAYLAND_VERSION_MAJOR > 1 || (WAYLAND_VERSION_MAJOR == 1 && WAYLAND_VERSION_MINOR > 16))",
-            "wl_client_post_implementation_error(",
-            {Emitter::layout({
-                Emitter::seq({
-                        "client",
-                        "\"Mir internal error processing %s request\"",
-                        "method_name.c_str()"},
-                    Emitter::layout(",", false, true))},
-                true,
-                false,
-                Emitter::single_indent), ");"},
-            "#else",
-            "wl_client_post_no_memory(client);",
-            "#endif",
-            "::mir::log(",
-            {Emitter::layout({
-                Emitter::seq({
-                        "::mir::logging::Severity::error",
-                        "\"frontend:Wayland\"",
-                        "std::current_exception()",
-                        "\"Exception processing \" + method_name + \" request\""},
-                    Emitter::layout(",", false, true))},
-                true,
-                false,
-                Emitter::single_indent), ");"},
-        },
-        "}",
-    };
-}
-
 Emitter include_guard_bottom(std::string const& macro)
 {
     return Lines{
         {"#endif // ", macro}
     };
+}
+
+Emitter forward_declarations_for(std::vector<Interface> const& interfaces)
+{
+    std::vector<Emitter> decls;
+    for (auto const& interface : interfaces)
+    {
+        decls.push_back(Line{"class ", interface.class_name(), ";"});
+    }
+    return Lines{decls};
 }
 
 Emitter header_file(std::string input_file_path, std::vector<Interface> const& interfaces)
@@ -137,6 +107,8 @@ Emitter header_file(std::string input_file_path, std::vector<Interface> const& i
         "{",
         "namespace wayland",
         "{",
+        empty_line,
+        forward_declarations_for(interfaces),
         empty_line,
         EmptyLineList{interface_emitters},
         empty_line,
@@ -172,8 +144,6 @@ Emitter source_file(std::string input_file_path, std::vector<Interface> const& i
         comment_header(input_file_path),
         empty_line,
         impl_includes(protocol_name),
-        empty_line,
-        post_error_helper(),
         empty_line,
         "namespace mir",
         "{",
@@ -265,11 +235,28 @@ int main(int argc, char** argv)
     auto root_node = document->get_root_node();
 
     auto constructor_nodes = root_node->find("//arg[@type='new_id']");
-    std::unordered_set<std::string> constructible_interfaces;
+    std::unordered_set<std::string> client_constructable_interfaces;
+    std::unordered_multimap<std::string, std::string> server_constructable_interfaces;
     for (auto const node : constructor_nodes)
     {
         auto arg = dynamic_cast<xmlpp::Element const*>(node);
-        constructible_interfaces.insert(arg->get_attribute_value("interface"));
+
+        auto const constructor_request = arg->get_parent();
+        auto const interface_name = arg->get_attribute_value("interface");
+        if (constructor_request->get_name() == "event")
+        {
+            // An new_id in an event means the server has constructed the object,
+            // and hence will choose the ID.
+            auto const parent_interface = constructor_request->get_parent();
+            auto const parent_name = parent_interface->get_attribute_value("name");
+            server_constructable_interfaces.insert({interface_name, parent_name});
+        }
+        else if (constructor_request->get_name() == "request")
+        {
+            // new_id in a request is a client-initiated construction;
+            // the client has already selected the ID
+            client_constructable_interfaces.insert(interface_name);
+        }
     }
 
     std::vector<Interface> interfaces;
@@ -283,7 +270,11 @@ int main(int argc, char** argv)
             // These are special, and don't need binding.
             continue;
         }
-        interfaces.emplace_back(*interface, name_transform, constructible_interfaces);
+        interfaces.emplace_back(
+            *interface,
+            name_transform,
+            client_constructable_interfaces,
+            server_constructable_interfaces);
     }
 
     Emitter emitter{nullptr};

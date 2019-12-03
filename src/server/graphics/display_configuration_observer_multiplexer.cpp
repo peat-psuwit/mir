@@ -19,6 +19,7 @@
 #include "display_configuration_observer_multiplexer.h"
 
 namespace mg = mir::graphics;
+namespace ms = mir::scene;
 
 void mg::DisplayConfigurationObserverMultiplexer::initial_configuration(
     std::shared_ptr<mg::DisplayConfiguration const> const& config)
@@ -39,14 +40,14 @@ void mg::DisplayConfigurationObserverMultiplexer::base_configuration_updated(
 }
 
 void mg::DisplayConfigurationObserverMultiplexer::session_configuration_applied(
-    std::shared_ptr<frontend::Session> const& session,
+    std::shared_ptr<ms::Session> const& session,
     std::shared_ptr<DisplayConfiguration> const& config)
 {
     for_each_observer(&mg::DisplayConfigurationObserver::session_configuration_applied, session, config);
 }
 
 void mg::DisplayConfigurationObserverMultiplexer::session_configuration_removed(
-    std::shared_ptr<frontend::Session> const& session)
+    std::shared_ptr<ms::Session> const& session)
 {
     for_each_observer(&mg::DisplayConfigurationObserver::session_configuration_removed, session);
 }
@@ -63,6 +64,13 @@ void mg::DisplayConfigurationObserverMultiplexer::catastrophic_configuration_err
     std::exception const& error)
 {
     for_each_observer(&mg::DisplayConfigurationObserver::catastrophic_configuration_error, failed_fallback, error);
+}
+
+void mg::DisplayConfigurationObserverMultiplexer::configuration_updated_for_session(
+    std::shared_ptr<scene::Session> const& session,
+    std::shared_ptr<DisplayConfiguration const> const& config)
+{
+    for_each_observer(&mg::DisplayConfigurationObserver::configuration_updated_for_session, session, config);
 }
 
 mg::DisplayConfigurationObserverMultiplexer::DisplayConfigurationObserverMultiplexer(

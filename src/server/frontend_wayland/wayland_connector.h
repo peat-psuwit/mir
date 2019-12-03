@@ -47,6 +47,14 @@ namespace geometry
 {
 struct Size;
 }
+namespace shell
+{
+class Shell;
+}
+namespace scene
+{
+class Surface;
+}
 namespace frontend
 {
 class WlCompositor;
@@ -54,9 +62,6 @@ class WlSubcompositor;
 class WlApplication;
 class WlSeat;
 class OutputManager;
-
-class Shell;
-class Surface;
 class MirDisplay;
 class SessionAuthorizer;
 class DataDeviceManager;
@@ -69,14 +74,16 @@ public:
     WaylandExtensions(WaylandExtensions const&) = delete;
     WaylandExtensions& operator=(WaylandExtensions const&) = delete;
 
-    void init(wl_display* display, std::shared_ptr<Shell> const& shell, WlSeat* seat, OutputManager* const output_manager);
+    virtual void run_builders(wl_display* display, std::function<void(std::function<void()>&& work)> const& run_on_wayland_mainloop);
+
+    void init(wl_display* display, std::shared_ptr<shell::Shell> const& shell, WlSeat* seat, OutputManager* const output_manager);
 
     auto get_extension(std::string const& name) const -> std::shared_ptr<void>;
 
 protected:
 
     void add_extension(std::string const name, std::shared_ptr<void> implementation);
-    virtual void custom_extensions(wl_display* display, std::shared_ptr<Shell> const& shell, WlSeat* seat, OutputManager* const output_manager);
+    virtual void custom_extensions(wl_display* display, std::shared_ptr<shell::Shell> const& shell, WlSeat* seat, OutputManager* const output_manager);
 
 private:
     std::unordered_map<std::string, std::shared_ptr<void>> extension_protocols;
@@ -85,11 +92,10 @@ private:
 class WaylandConnector : public Connector
 {
 public:
-    using WaylandProtocolExtensionFilter = std::function<bool(std::shared_ptr<frontend::Session> const&, char const*)>;
+    using WaylandProtocolExtensionFilter = std::function<bool(std::shared_ptr<scene::Session> const&, char const*)>;
 
     WaylandConnector(
-        optional_value<std::string> const& display_name,
-        std::shared_ptr<Shell> const& shell,
+        std::shared_ptr<shell::Shell> const& shell,
         std::shared_ptr<MirDisplay> const& display_config,
         std::shared_ptr<input::InputDeviceHub> const& input_hub,
         std::shared_ptr<input::Seat> const& seat,
@@ -107,7 +113,7 @@ public:
     int client_socket_fd() const override;
 
     int client_socket_fd(
-        std::function<void(std::shared_ptr<Session> const& session)> const& connect_handler) const override;
+        std::function<void(std::shared_ptr<scene::Session> const& session)> const& connect_handler) const override;
 
     void run_on_wayland_display(std::function<void(wl_display*)> const& functor);
 
@@ -129,6 +135,7 @@ private:
     std::unique_ptr<DataDeviceManager> data_device_manager_global;
     std::shared_ptr<Executor> const executor;
     std::shared_ptr<graphics::WaylandAllocator> const allocator;
+    std::shared_ptr<shell::Shell> const shell;
     std::unique_ptr<WaylandExtensions> const extensions;
     std::thread dispatch_thread;
     wl_event_source* pause_source;
@@ -137,13 +144,16 @@ private:
     WaylandProtocolExtensionFilter const extension_filter;
 
     // Only accessed on event loop
-    std::unordered_map<int, std::function<void(std::shared_ptr<Session> const& session)>> mutable connect_handlers;
+    std::unordered_map<int, std::function<void(std::shared_ptr<scene::Session> const& session)>> mutable connect_handlers;
 };
 
-auto create_wl_shell(wl_display* display, std::shared_ptr<Shell> const& shell, WlSeat* seat, OutputManager* const output_manager)
-    -> std::shared_ptr<void>;
+auto create_wl_shell(
+    wl_display* display,
+    std::shared_ptr<shell::Shell> const& shell,
+    WlSeat* seat,
+    OutputManager* const output_manager) -> std::shared_ptr<void>;
 
-auto get_wl_shell_window(wl_resource* surface) -> std::shared_ptr<Surface>;
+auto get_wl_shell_window(wl_resource* surface) -> std::shared_ptr<scene::Surface>;
 }
 }
 

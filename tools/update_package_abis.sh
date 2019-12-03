@@ -13,7 +13,6 @@ packages="\
     libmiral:MIRAL_ABI \
     libmircore:MIRCORE_ABI \
     libmirclient:MIRCLIENT_ABI \
-    libmirclient-debug-extension:MIRCLIENT_DEBUG_EXTENSION_ABI \
     libmircommon:MIRCOMMON_ABI \
     libmirplatform:MIRPLATFORM_ABI \
     libmirprotobuf:MIRPROTOBUF_ABI \
@@ -24,7 +23,8 @@ packages="\
     mir-platform-graphics-mesa-kms:MIR_SERVER_GRAPHICS_PLATFORM_ABI \
     mir-platform-graphics-eglstream-kms:MIR_SERVER_GRAPHICS_PLATFORM_ABI \
     mir-platform-input-evdev:MIR_SERVER_INPUT_PLATFORM_ABI\
-    libmirwayland:MIRWAYLAND_ABI"
+    libmirwayland:MIRWAYLAND_ABI\
+    mir-platform-graphics-wayland:MIR_SERVER_GRAPHICS_PLATFORM_ABI"
 
 package_name()
 {

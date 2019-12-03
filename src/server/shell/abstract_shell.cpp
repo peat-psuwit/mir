@@ -49,7 +49,7 @@ struct UpdateConfinementOnSurfaceChanges : ms::NullSurfaceObserver
     {
     }
 
-    void resized_to(ms::Surface const*, geom::Size const& /*size*/) override
+    void content_resized_to(ms::Surface const*, geom::Size const& /*content_size*/) override
     {
         update_confinement_region();
     }
@@ -135,18 +135,18 @@ void msh::AbstractShell::close_session(
     window_manager->remove_session(session);
 }
 
-mf::SurfaceId msh::AbstractShell::create_surface(
+auto msh::AbstractShell::create_surface(
     std::shared_ptr<ms::Session> const& session,
     ms::SurfaceCreationParameters const& params,
-    std::shared_ptr<mf::EventSink> const& sink)
+    std::shared_ptr<ms::SurfaceObserver> const& observer) -> std::shared_ptr<ms::Surface>
 {
-    auto const build = [sink](std::shared_ptr<ms::Session> const& session, ms::SurfaceCreationParameters const& placed_params)
+    auto const build = [observer](std::shared_ptr<ms::Session> const& session, ms::SurfaceCreationParameters const& placed_params)
         {
-            return session->create_surface(placed_params, sink);
+            return session->create_surface(session, placed_params, observer);
         };
 
     auto const result = window_manager->add_surface(session, params, build);
-    report->created_surface(*session, result);
+    report->created_surface(*session, *result);
     return result;
 }
 
@@ -178,11 +178,10 @@ void msh::AbstractShell::modify_surface(std::shared_ptr<scene::Session> const& s
 
     if (modifications.stream_cursor.is_set())
     {
-        auto stream_id = modifications.stream_cursor.value().stream_id;
-        if (stream_id != mir::frontend::BufferStreamId{-1})
+        auto const& cursor = modifications.stream_cursor.value();
+        if (auto const stream = cursor.stream.lock())
         {
-            auto hotspot = modifications.stream_cursor.value().hotspot;
-            auto stream = session->get_buffer_stream(modifications.stream_cursor.value().stream_id);
+            auto hotspot = cursor.hotspot;
             surface->set_cursor_stream(stream, hotspot);
         }
         else
@@ -206,10 +205,10 @@ void msh::AbstractShell::modify_surface(std::shared_ptr<scene::Session> const& s
 
 void msh::AbstractShell::destroy_surface(
     std::shared_ptr<ms::Session> const& session,
-    mf::SurfaceId surface)
+    std::shared_ptr<scene::Surface> const& surface)
 {
-    report->destroying_surface(*session, surface);
-    window_manager->remove_surface(session, session->surface(surface));
+    report->destroying_surface(*session, *surface);
+    window_manager->remove_surface(session, surface);
 }
 
 std::shared_ptr<ms::PromptSession> msh::AbstractShell::start_prompt_session_for(
@@ -388,7 +387,7 @@ void msh::AbstractShell::notify_focus_locked(
             if (find(begin(new_focus_tree), end(new_focus_tree), item) == end(new_focus_tree) ||
                 item == surface)
             {
-                item->configure(mir_window_attrib_focus, mir_window_focus_state_unfocused);
+                item->set_focus_state(mir_window_focus_state_unfocused);
             }
         }
 
@@ -414,7 +413,7 @@ void msh::AbstractShell::notify_focus_locked(
                 if (find(begin(current_focus_tree), end(current_focus_tree), item) == end(current_focus_tree) ||
                     item == surface)
                 {
-                    item->configure(mir_window_attrib_focus, mir_window_focus_state_focused);
+                    item->set_focus_state(mir_window_focus_state_focused);
                 }
             }
         }

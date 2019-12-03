@@ -66,6 +66,7 @@ add_library(miral SHARED
     window_manager_tools.cpp            ${miral_include}/miral/window_manager_tools.h
                                         ${miral_include}/miral/lambda_as_function.h
     x11_support.cpp                     ${miral_include}/miral/x11_support.h
+    zone.cpp                            ${miral_include}/miral/zone.h
 )
 
 check_cxx_compiler_flag(-Wno-attribute-alias HAS_W_NO_ATTRIBUTE_ALIAS)
@@ -127,8 +128,7 @@ if (CMAKE_COMPILER_IS_GNUCXX   AND  # clang generates slightly different symbols
     if (MIR_DPKG_GENSYMBOLS)
         add_custom_target(check-miral-symbols ALL
             DEPENDS miral ${PROJECT_SOURCE_DIR}/debian/libmiral${MIRAL_ABI}.symbols
-            COMMAND rm -f ${CMAKE_CURRENT_BINARY_DIR}/libmiral${MIRAL_ABI}.symbols
-            COMMAND dpkg-gensymbols -e${CMAKE_LIBRARY_OUTPUT_DIRECTORY}/libmiral.so.${MIRAL_ABI} -plibmiral${MIRAL_ABI} -v${MIRAL_VERSION} -O${CMAKE_CURRENT_BINARY_DIR}/libmiral${MIRAL_ABI}.symbols
+            COMMAND python3 ${CMAKE_CURRENT_SOURCE_DIR}/check-and-update-debian-symbols.py ${CMAKE_LIBRARY_OUTPUT_DIRECTORY} miral ${MIRAL_VERSION} ${MIRAL_ABI}
             WORKING_DIRECTORY "${PROJECT_SOURCE_DIR}"
             VERBATIM)
     endif()
@@ -149,7 +149,7 @@ configure_file(
 
 if(TARGET doc)
     add_custom_target(regenerate-miral-symbols-map
-            ${CMAKE_CURRENT_SOURCE_DIR}/process_doxygen_xml.py ${CMAKE_BINARY_DIR}/doc/xml/*.xml > ${symbol_map}
+            ${CMAKE_CURRENT_SOURCE_DIR}/regenerate-miral-symbols-map.py ${CMAKE_BINARY_DIR}/doc/xml/*.xml > ${symbol_map}
             DEPENDS doc)
 endif()
 

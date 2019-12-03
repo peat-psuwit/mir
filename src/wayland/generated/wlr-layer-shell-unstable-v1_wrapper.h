@@ -13,20 +13,24 @@
 #include "mir/fd.h"
 #include <wayland-server-core.h>
 
+#include "mir/wayland/wayland_base.h"
+
 namespace mir
 {
 namespace wayland
 {
 
-class LayerShellV1
+class LayerShellV1;
+class LayerSurfaceV1;
+
+class LayerShellV1 : public Resource
 {
 public:
     static char const constexpr* interface_name = "zwlr_layer_shell_v1";
-    static int const interface_version = 1;
 
     static LayerShellV1* from(struct wl_resource*);
 
-    LayerShellV1(struct wl_resource* resource);
+    LayerShellV1(struct wl_resource* resource, Version<1>);
     virtual ~LayerShellV1() = default;
 
     void destroy_wayland_object() const;
@@ -53,14 +57,12 @@ public:
 
     static bool is_instance(wl_resource* resource);
 
-    class Global
+    class Global : public wayland::Global
     {
     public:
-        Global(wl_display* display, uint32_t max_version);
-        virtual ~Global();
+        Global(wl_display* display, Version<1>);
 
-        wl_global* const global;
-        uint32_t const max_version;
+        auto interface_name() const -> char const* override;
 
     private:
         virtual void bind(wl_resource* new_zwlr_layer_shell_v1) = 0;
@@ -71,15 +73,14 @@ private:
     virtual void get_layer_surface(struct wl_resource* id, struct wl_resource* surface, std::experimental::optional<struct wl_resource*> const& output, uint32_t layer, std::string const& namespace_) = 0;
 };
 
-class LayerSurfaceV1
+class LayerSurfaceV1 : public Resource
 {
 public:
     static char const constexpr* interface_name = "zwlr_layer_surface_v1";
-    static int const interface_version = 1;
 
     static LayerSurfaceV1* from(struct wl_resource*);
 
-    LayerSurfaceV1(struct wl_resource* resource);
+    LayerSurfaceV1(struct wl_resource* resource, Version<1>);
     virtual ~LayerSurfaceV1() = default;
 
     void send_configure_event(uint32_t serial, uint32_t width, uint32_t height) const;

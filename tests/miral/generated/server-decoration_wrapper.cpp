@@ -14,26 +14,6 @@
 
 #include "mir/log.h"
 
-namespace
-{
-void internal_error_processing_request(struct wl_client* client, std::string const& method_name)
-{
-#if (WAYLAND_VERSION_MAJOR > 1 || (WAYLAND_VERSION_MAJOR == 1 && WAYLAND_VERSION_MINOR > 16))
-    wl_client_post_implementation_error(
-        client,
-        "Mir internal error processing %s request",
-        method_name.c_str());
-#else
-    wl_client_post_no_memory(client);
-#endif
-    ::mir::log(
-        ::mir::logging::Severity::error,
-        "frontend:Wayland",
-        std::current_exception(),
-        "Exception processing " + method_name + " request");
-}
-}
-
 namespace mir
 {
 namespace wayland
@@ -66,6 +46,8 @@ mw::ServerDecorationManager* mw::ServerDecorationManager::from(struct wl_resourc
 
 struct mw::ServerDecorationManager::Thunks
 {
+    static int const supported_version;
+
     static void create_thunk(struct wl_client* client, struct wl_resource* resource, uint32_t id, struct wl_resource* surface)
     {
         auto me = static_cast<ServerDecorationManager*>(wl_resource_get_user_data(resource));
@@ -97,7 +79,7 @@ struct mw::ServerDecorationManager::Thunks
         auto resource = wl_resource_create(
             client,
             &org_kde_kwin_server_decoration_manager_interface_data,
-            std::min(version, me->max_version),
+            std::min((int)version, Thunks::supported_version),
             id);
         if (resource == nullptr)
         {
@@ -120,7 +102,9 @@ struct mw::ServerDecorationManager::Thunks
     static void const* request_vtable[];
 };
 
-mw::ServerDecorationManager::ServerDecorationManager(struct wl_resource* resource)
+int const mw::ServerDecorationManager::Thunks::supported_version = 1;
+
+mw::ServerDecorationManager::ServerDecorationManager(struct wl_resource* resource, Version<1>)
     : client{wl_resource_get_client(resource)},
       resource{resource}
 {
@@ -146,24 +130,19 @@ void mw::ServerDecorationManager::destroy_wayland_object() const
     wl_resource_destroy(resource);
 }
 
-mw::ServerDecorationManager::Global::Global(wl_display* display, uint32_t max_version)
-    : global{wl_global_create(
-        display,
-        &org_kde_kwin_server_decoration_manager_interface_data,
-        max_version,
-        this,
-        &Thunks::bind_thunk)},
-      max_version{max_version}
-{
-    if (global == nullptr)
-    {
-        BOOST_THROW_EXCEPTION((std::runtime_error{"Failed to export org_kde_kwin_server_decoration_manager interface"}));
-    }
-}
+mw::ServerDecorationManager::Global::Global(wl_display* display, Version<1>)
+    : wayland::Global{
+          wl_global_create(
+              display,
+              &org_kde_kwin_server_decoration_manager_interface_data,
+              Thunks::supported_version,
+              this,
+              &Thunks::bind_thunk)}
+{}
 
-mw::ServerDecorationManager::Global::~Global()
+auto mw::ServerDecorationManager::Global::interface_name() const -> char const*
 {
-    wl_global_destroy(global);
+    return ServerDecorationManager::interface_name;
 }
 
 struct wl_interface const* mw::ServerDecorationManager::Thunks::create_types[] {
@@ -188,6 +167,8 @@ mw::ServerDecoration* mw::ServerDecoration::from(struct wl_resource* resource)
 
 struct mw::ServerDecoration::Thunks
 {
+    static int const supported_version;
+
     static void release_thunk(struct wl_client* client, struct wl_resource* resource)
     {
         auto me = static_cast<ServerDecoration*>(wl_resource_get_user_data(resource));
@@ -224,7 +205,9 @@ struct mw::ServerDecoration::Thunks
     static void const* request_vtable[];
 };
 
-mw::ServerDecoration::ServerDecoration(struct wl_resource* resource)
+int const mw::ServerDecoration::Thunks::supported_version = 1;
+
+mw::ServerDecoration::ServerDecoration(struct wl_resource* resource, Version<1>)
     : client{wl_resource_get_client(resource)},
       resource{resource}
 {
@@ -268,13 +251,13 @@ namespace wayland
 
 struct wl_interface const org_kde_kwin_server_decoration_manager_interface_data {
     mw::ServerDecorationManager::interface_name,
-    mw::ServerDecorationManager::interface_version,
+    mw::ServerDecorationManager::Thunks::supported_version,
     1, mw::ServerDecorationManager::Thunks::request_messages,
     1, mw::ServerDecorationManager::Thunks::event_messages};
 
 struct wl_interface const org_kde_kwin_server_decoration_interface_data {
     mw::ServerDecoration::interface_name,
-    mw::ServerDecoration::interface_version,
+    mw::ServerDecoration::Thunks::supported_version,
     2, mw::ServerDecoration::Thunks::request_messages,
     1, mw::ServerDecoration::Thunks::event_messages};
 

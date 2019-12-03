@@ -23,7 +23,7 @@
 
 #include "mir/test/event_matchers.h"
 #include "mir/test/fake_shared.h"
-#include "mir/test/signal.h"
+#include "mir/test/signal_actions.h"
 #include "mir/test/doubles/mock_seat_report.h"
 #include "mir_test_framework/fake_input_device.h"
 #include "mir_test_framework/headless_in_process_server.h"
@@ -55,7 +55,7 @@ int const surface_height = 100;
 
 struct MockSurfaceObserver : public ms::NullSurfaceObserver
 {
-    MOCK_METHOD2(resized_to, void(ms::Surface const*, geom::Size const&));
+    MOCK_METHOD2(content_resized_to, void(ms::Surface const*, geom::Size const&));
 };
 }
 
@@ -263,7 +263,7 @@ TEST_F(PointerConfinement, test_we_update_our_confined_region_on_a_resize)
     latest_shell_surface()->add_observer(fake);
 
     geom::Size new_size = {surface_width * 2, surface_height};
-    EXPECT_CALL(surface_observer, resized_to(_, new_size)).Times(1);
+    EXPECT_CALL(surface_observer, content_resized_to(_, new_size)).Times(1);
 
     geom::Rectangles confinement_region{{{0, 0}, new_size}};
     EXPECT_CALL(*mock_seat_observer, seat_set_confinement_region_called(mt::RectanglesMatches(confinement_region)))

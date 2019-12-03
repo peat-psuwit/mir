@@ -22,20 +22,83 @@
 #include "wl_surface.h"
 
 #include "mir/executor.h"
-#include "mir/client/event.h"
-#include "mir/frontend/session.h"
-#include "mir/frontend/surface.h"
+#include "mir/frontend/wayland.h"
+#include "mir/scene/surface.h"
 #include "mir/frontend/buffer_stream.h"
 #include "mir/geometry/displacement.h"
+#include "mir/graphics/cursor_image.h"
+#include "mir/graphics/buffer.h"
+#include "mir/renderer/sw/pixel_source.h"
+#include "mir/compositor/buffer_stream.h"
 
 #include <linux/input-event-codes.h>
+#include <boost/throw_exception.hpp>
+#include <string.h> // memcpy
 
 namespace mf = mir::frontend;
-using namespace mir::geometry;
+namespace ms = mir::scene;
+namespace geom = mir::geometry;
+namespace mw = mir::wayland;
+namespace mg = mir::graphics;
+namespace mc = mir::compositor;
+namespace mrs = mir::renderer::software;
+
+namespace
+{
+class BufferCursorImage : public mg::CursorImage
+{
+public:
+    BufferCursorImage(mg::Buffer &buffer, geom::Displacement const& hotspot)
+        : buffer_size(buffer.size()),
+          hotspot_(hotspot)
+    {
+        auto pixel_source = dynamic_cast<mrs::PixelSource*>(buffer.native_buffer_base());
+        if (pixel_source)
+        {
+            pixel_source->read([&](unsigned char const* buffer_pixels)
+            {
+                size_t buffer_size_bytes = buffer_size.width.as_int() * buffer_size.height.as_int()
+                    * MIR_BYTES_PER_PIXEL(buffer.pixel_format());
+                pixels = std::unique_ptr<unsigned char[]>(
+                    new unsigned char[buffer_size_bytes]
+                );
+                memcpy(pixels.get(), buffer_pixels, buffer_size_bytes);
+            });
+        }
+        else
+        {
+            BOOST_THROW_EXCEPTION(std::logic_error("Could not read cursor image data from buffer"));
+        }
+    }
+
+    auto as_argb_8888() const -> void const* override
+    {
+        return pixels.get();
+    }
+
+    auto size() const -> geom::Size override
+    {
+        return buffer_size;
+    }
+
+    auto hotspot() const -> geom::Displacement override
+    {
+        return hotspot_;
+    }
+
+private:
+    geom::Size const buffer_size;
+    geom::Displacement const hotspot_;
+    std::unique_ptr<unsigned char[]> pixels;
+};
+}
 
 struct mf::WlPointer::Cursor
 {
     virtual void apply_to(WlSurface* surface) = 0;
+    virtual void set_hotspot(geom::Displacement const& new_hotspot) = 0;
+    virtual auto cursor_surface() const -> std::experimental::optional<WlSurface*> = 0;
+
     virtual ~Cursor() = default;
     Cursor() = default;
 
@@ -48,13 +111,15 @@ namespace
 struct NullCursor : mf::WlPointer::Cursor
 {
     void apply_to(mf::WlSurface*) override {}
+    void set_hotspot(geom::Displacement const&) override {};
+    auto cursor_surface() const -> std::experimental::optional<mf::WlSurface*> override { return {}; };
 };
 }
 
 mf::WlPointer::WlPointer(
     wl_resource* new_resource,
     std::function<void(WlPointer*)> const& on_destroy)
-    : Pointer(new_resource),
+    : Pointer(new_resource, Version<6>()),
       display{wl_client_get_display(client)},
       on_destroy{on_destroy},
       cursor{std::make_unique<NullCursor>()}
@@ -63,185 +128,135 @@ mf::WlPointer::WlPointer(
 
 mf::WlPointer::~WlPointer()
 {
-    if (focused_surface)
-        focused_surface.value()->remove_destroy_listener(this);
+    if (surface_under_cursor)
+        surface_under_cursor.value()->remove_destroy_listener(this);
     on_destroy(this);
 }
 
-void mf::WlPointer::handle_event(MirPointerEvent const* event, WlSurface* surface)
+void mf::WlPointer::enter(WlSurface* parent_surface, geom::Point const& position_on_parent)
 {
-    switch(mir_pointer_event_action(event))
-    {
-        case mir_pointer_action_button_down:
-        case mir_pointer_action_button_up:
-        {
-            auto const current_pointer_buttons  = mir_pointer_event_buttons(event);
-            auto const timestamp = mir_input_event_get_event_time_ms(mir_pointer_event_input_event(event));
-
-            for (auto const& mapping :
-                {
-                    std::make_pair(mir_pointer_button_primary, BTN_LEFT),
-                    std::make_pair(mir_pointer_button_secondary, BTN_RIGHT),
-                    std::make_pair(mir_pointer_button_tertiary, BTN_MIDDLE),
-                    std::make_pair(mir_pointer_button_back, BTN_BACK),
-                    std::make_pair(mir_pointer_button_forward, BTN_FORWARD),
-                    std::make_pair(mir_pointer_button_side, BTN_SIDE),
-                    std::make_pair(mir_pointer_button_task, BTN_TASK),
-                    std::make_pair(mir_pointer_button_extra, BTN_EXTRA)
-                })
-            {
-                if (mapping.first & (current_pointer_buttons ^ last_buttons))
-                {
-                    auto const state = (mapping.first & current_pointer_buttons) ?
-                        ButtonState::pressed :
-                        ButtonState::released;
-
-                    auto const serial = wl_display_next_serial(display);
-                    send_button_event(serial, timestamp, mapping.second, state);
-                    handle_frame();
-                }
-            }
-
-            last_buttons = current_pointer_buttons;
-            break;
-        }
-        case mir_pointer_action_enter:
-        {
-            auto point = Point{
-                mir_pointer_event_axis_value(event, mir_pointer_axis_x),
-                mir_pointer_event_axis_value(event, mir_pointer_axis_y)};
-            auto transformed = surface->transform_point(point);
-            handle_enter(transformed.position, transformed.surface);
-            handle_frame();
-            break;
-        }
-        case mir_pointer_action_leave:
-        {
-            handle_leave();
-            handle_frame();
-            break;
-        }
-        case mir_pointer_action_motion:
-        {
-            // TODO: properly group vscroll and hscroll events in the same frame (as described by the frame
-            //  event description in wayland.xml) and send axis_source, axis_stop and axis_discrete events where
-            //  appropriate (may require significant reworking of the input system)
-
-            bool needs_frame = false;
-            auto const timestamp = mir_input_event_get_event_time_ms(mir_pointer_event_input_event(event));
-            auto point = Point{
-                mir_pointer_event_axis_value(event, mir_pointer_axis_x),
-                mir_pointer_event_axis_value(event, mir_pointer_axis_y)};
-            auto transformed = surface->transform_point(point);
-
-            if (focused_surface && transformed.surface == focused_surface.value())
-            {
-                if (!last_position || transformed.position != last_position.value())
-                {
-                    send_motion_event(
-                        timestamp,
-                        transformed.position.x.as_int(),
-                        transformed.position.y.as_int());
-                    last_position = transformed.position;
-                    needs_frame = true;
-                }
-            }
-            else
-            {
-                if (focused_surface)
-                    handle_leave();
-                handle_enter(transformed.position, transformed.surface);
-                needs_frame = true;
-            }
-
-            auto hscroll = mir_pointer_event_axis_value(event, mir_pointer_axis_hscroll) * 10;
-            if (hscroll != 0)
-            {
-                send_axis_event(timestamp,
-                                Axis::horizontal_scroll,
-                                hscroll);
-                needs_frame = true;
-            }
-
-            auto vscroll = mir_pointer_event_axis_value(event, mir_pointer_axis_vscroll) * 10;
-            if (vscroll != 0)
-            {
-                send_axis_event(timestamp,
-                                Axis::vertical_scroll,
-                                vscroll);
-                needs_frame = true;
-            }
-
-            if (needs_frame)
-            {
-                handle_frame();
-            }
-            break;
-        }
-        case mir_pointer_actions:
-            break;
-    }
-}
-
-void mf::WlPointer::handle_enter(Point position, WlSurface* surface)
-{
-    cursor->apply_to(surface);
     auto const serial = wl_display_next_serial(display);
+    auto const final = parent_surface->transform_point(position_on_parent);
+
+    cursor->apply_to(final.surface);
     send_enter_event(
         serial,
-        surface->raw_resource(),
-        position.x.as_int(),
-        position.y.as_int());
-    surface->add_destroy_listener(
+        final.surface->raw_resource(),
+        final.position.x.as_int(),
+        final.position.y.as_int());
+    can_send_frame = true;
+    final.surface->add_destroy_listener(
         this,
         [this]()
         {
-            handle_leave();
+            leave();
         });
-    focused_surface = surface;
+    surface_under_cursor = final.surface;
 }
 
-void mf::WlPointer::handle_leave()
+void mf::WlPointer::leave()
 {
-    if (!focused_surface)
+    if (!surface_under_cursor)
         return;
-    focused_surface.value()->remove_destroy_listener(this);
+    surface_under_cursor.value()->remove_destroy_listener(this);
     auto const serial = wl_display_next_serial(display);
     send_leave_event(
         serial,
-        focused_surface.value()->raw_resource());
-    focused_surface = std::experimental::nullopt;
-    last_position = std::experimental::nullopt;
+        surface_under_cursor.value()->raw_resource());
+    can_send_frame = true;
+    surface_under_cursor = std::experimental::nullopt;
 }
 
-void mf::WlPointer::handle_frame()
+void mf::WlPointer::button(std::chrono::milliseconds const& ms, uint32_t button, bool pressed)
 {
-    if (version_supports_frame())
+    auto const serial = wl_display_next_serial(display);
+    auto const state = pressed ? ButtonState::pressed : ButtonState::released;
+
+    send_button_event(serial, ms.count(), button, state);
+    can_send_frame = true;
+}
+
+void mf::WlPointer::motion(
+    std::chrono::milliseconds const& ms,
+    WlSurface* parent_surface,
+    geometry::Point const& position_on_parent)
+{
+    auto final = parent_surface->transform_point(position_on_parent);
+
+    if (surface_under_cursor && final.surface == surface_under_cursor.value())
+    {
+        send_motion_event(
+            ms.count(),
+            final.position.x.as_int(),
+            final.position.y.as_int());
+        can_send_frame = true;
+    }
+    else
+    {
+        leave();
+        enter(final.surface, final.position);
+    }
+}
+
+void mf::WlPointer::axis(std::chrono::milliseconds const& ms, geometry::Displacement const& scroll)
+{
+    if (scroll.dx != geom::DeltaX{})
+    {
+        send_axis_event(
+            ms.count(),
+            Axis::horizontal_scroll,
+            scroll.dx.as_int());
+        can_send_frame = true;
+    }
+
+    if (scroll.dy != geom::DeltaY{})
+    {
+        send_axis_event(
+            ms.count(),
+            Axis::vertical_scroll,
+            scroll.dy.as_int());
+        can_send_frame = true;
+    }
+}
+
+void mf::WlPointer::frame()
+{
+    if (can_send_frame && version_supports_frame())
         send_frame_event();
+    can_send_frame = false;
 }
 
 namespace
 {
-struct WlStreamCursor : mf::WlPointer::Cursor
+struct WlSurfaceCursor : mf::WlPointer::Cursor
 {
-    WlStreamCursor(
-        std::shared_ptr<mf::Session> const session,
-        std::shared_ptr<mf::BufferStream> const& stream,
-        Displacement hotspot);
+    WlSurfaceCursor(
+        mf::WlSurface* surface,
+        geom::Displacement hotspot);
+    ~WlSurfaceCursor();
 
     void apply_to(mf::WlSurface* surface) override;
+    void set_hotspot(geom::Displacement const& new_hotspot) override;
+    auto cursor_surface() const -> std::experimental::optional<mf::WlSurface*> override;
 
-    std::shared_ptr<mf::Session> const session;
-    std::shared_ptr<mf::BufferStream> const stream;
-    Displacement const hotspot;
+private:
+    void apply_latest_buffer();
+
+    mf::WlSurface* const surface;
+    // If surface_destroyed is true, surface should not be used
+    std::shared_ptr<bool> surface_destroyed;
+    std::shared_ptr<mc::BufferStream> const stream;
+    mf::NullWlSurfaceRole surface_role; // Used only to assert unique ownership
+
+    std::weak_ptr<ms::Surface> surface_under_cursor;
+    geom::Displacement hotspot;
 };
 
 struct WlHiddenCursor : mf::WlPointer::Cursor
 {
-    WlHiddenCursor(std::shared_ptr<mf::Session> const session);
     void apply_to(mf::WlSurface* surface) override;
-
-    std::shared_ptr<mf::Session> const session;
+    void set_hotspot(geom::Displacement const&) override {};
+    auto cursor_surface() const -> std::experimental::optional<mf::WlSurface*> override { return {}; };
 };
 }
 
@@ -252,18 +267,26 @@ void mf::WlPointer::set_cursor(
 {
     if (surface)
     {
-        auto const cursor_stream = WlSurface::from(*surface)->stream;
-        Displacement const cursor_hotspot{hotspot_x, hotspot_y};
-
-        cursor = std::make_unique<WlStreamCursor>(get_session(client), cursor_stream, cursor_hotspot);
+        auto const wl_surface = WlSurface::from(*surface);
+        geom::Displacement const cursor_hotspot{hotspot_x, hotspot_y};
+        if (wl_surface == cursor->cursor_surface())
+        {
+            cursor->set_hotspot(cursor_hotspot);
+        }
+        else
+        {
+            cursor.reset(); // clean up old cursor before creating new one
+            cursor = std::make_unique<WlSurfaceCursor>(wl_surface, cursor_hotspot);
+            if (surface_under_cursor)
+                cursor->apply_to(surface_under_cursor.value());
+        }
     }
     else
     {
-        cursor = std::make_unique<WlHiddenCursor>(get_session(client));
+        cursor = std::make_unique<WlHiddenCursor>();
+        if (surface_under_cursor)
+            cursor->apply_to(surface_under_cursor.value());
     }
-
-    if (focused_surface)
-        cursor->apply_to(focused_surface.value());
 
     (void)serial;
 }
@@ -273,38 +296,80 @@ void mf::WlPointer::release()
     destroy_wayland_object();
 }
 
-WlStreamCursor::WlStreamCursor(
-    std::shared_ptr<mf::Session> const session,
-    std::shared_ptr<mf::BufferStream> const& stream,
-    Displacement hotspot) :
-    session{session},
-    stream{stream},
-    hotspot{hotspot}
+WlSurfaceCursor::WlSurfaceCursor(mf::WlSurface* surface, geom::Displacement hotspot)
+    : surface{surface},
+      surface_destroyed{surface->destroyed_flag()},
+      stream{surface->stream},
+      surface_role{surface},
+      hotspot{hotspot}
 {
+    surface->set_role(&surface_role);
+
+    stream->set_frame_posted_callback(
+        [this](auto)
+        {
+            this->apply_latest_buffer();
+        });
 }
 
-void WlStreamCursor::apply_to(mf::WlSurface* surface)
+WlSurfaceCursor::~WlSurfaceCursor()
 {
-    auto id = surface->surface_id();
-    if (id.as_value())
+    if (!*surface_destroyed)
+        surface->clear_role();
+    stream->set_frame_posted_callback([](auto){});
+}
+
+void WlSurfaceCursor::apply_to(mf::WlSurface* surface)
+{
+    auto const scene_surface = surface->scene_surface();
+
+    if (scene_surface)
     {
-        auto const mir_window = session->get_surface(id);
-        mir_window->set_cursor_stream(stream, hotspot);
+        surface_under_cursor = *scene_surface;
+        apply_latest_buffer();
+    }
+    else
+    {
+        surface_under_cursor.reset();
     }
 }
 
-WlHiddenCursor::WlHiddenCursor(
-    std::shared_ptr<mf::Session> const session) :
-    session{session}
+void WlSurfaceCursor::set_hotspot(geom::Displacement const& new_hotspot)
 {
+    hotspot = new_hotspot;
+    apply_latest_buffer();
+}
+
+auto WlSurfaceCursor::cursor_surface() const -> std::experimental::optional<mf::WlSurface*>
+{
+    if (!*surface_destroyed)
+        return surface;
+    else
+        return {};
+}
+
+void WlSurfaceCursor::apply_latest_buffer()
+{
+    if (auto const surface = surface_under_cursor.lock())
+    {
+        if (stream->has_submitted_buffer())
+        {
+            auto const cursor_image = std::make_shared<BufferCursorImage>(
+                *stream->lock_compositor_buffer(this),
+                hotspot);
+            surface->set_cursor_image(cursor_image);
+        }
+        else
+        {
+            surface->set_cursor_image(nullptr);
+        }
+    }
 }
 
 void WlHiddenCursor::apply_to(mf::WlSurface* surface)
 {
-    auto id = surface->surface_id();
-    if (id.as_value())
+    if (auto scene_surface = surface->scene_surface())
     {
-        auto const mir_window = session->get_surface(id);
-        mir_window->set_cursor_image({});
+        scene_surface.value()->set_cursor_image({});
     }
 }

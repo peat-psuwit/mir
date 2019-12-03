@@ -20,30 +20,69 @@
 #define MIR_FRONTEND_XDG_SHELL_STABLE_H
 
 #include "xdg-shell_wrapper.h"
+#include "window_wl_surface_role.h"
 
 namespace mir
 {
-namespace frontend
+namespace scene
 {
-
 class Shell;
 class Surface;
+}
+namespace frontend
+{
 class WlSeat;
 class OutputManager;
+class WlSurface;
+class XdgSurfaceStable;
 
 class XdgShellStable : public wayland::XdgWmBase::Global
 {
 public:
-    XdgShellStable(wl_display* display, std::shared_ptr<Shell> const shell, WlSeat& seat, OutputManager* output_manager);
+    XdgShellStable(
+        wl_display* display,
+        std::shared_ptr<shell::Shell> shell,
+        WlSeat& seat,
+        OutputManager* output_manager);
 
-    static auto get_window(wl_resource* surface) -> std::shared_ptr<Surface>;
-    std::shared_ptr<Shell> const shell;
+    static auto get_window(wl_resource* surface) -> std::shared_ptr<scene::Surface>;
+    std::shared_ptr<shell::Shell> const shell;
     WlSeat& seat;
     OutputManager* const output_manager;
 
 private:
     class Instance;
     void bind(wl_resource* new_resource) override;
+};
+
+class XdgPopupStable : public wayland::XdgPopup, public WindowWlSurfaceRole
+{
+public:
+    XdgPopupStable(
+        wl_resource* new_resource,
+        XdgSurfaceStable* xdg_surface,
+        std::experimental::optional<WlSurfaceRole*> parent_role,
+        wl_resource* positioner,
+        WlSurface* surface);
+
+    void grab(struct wl_resource* seat, uint32_t serial) override;
+    void destroy() override;
+
+    void handle_commit() override {};
+    void handle_state_change(MirWindowState /*new_state*/) override {};
+    void handle_active_change(bool /*is_now_active*/) override {};
+    void handle_resize(
+        std::experimental::optional<geometry::Point> const& new_top_left,
+        geometry::Size const& new_size) override;
+    void handle_close_request() override;
+
+    static auto from(wl_resource* resource) -> XdgPopupStable*;
+
+private:
+    std::experimental::optional<geometry::Point> cached_top_left;
+    std::experimental::optional<geometry::Size> cached_size;
+
+    XdgSurfaceStable* const xdg_surface;
 };
 
 }

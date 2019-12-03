@@ -32,8 +32,8 @@ struct StubSurface : scene::Surface
 {
     std::string name() const override;
     void move_to(geometry::Point const& top_left) override;
-    geometry::Size size() const override;
-    geometry::Size client_size() const override;
+    geometry::Size window_size() const override;
+    geometry::Size content_size() const override;
     std::shared_ptr<frontend::BufferStream> primary_buffer_stream() const override;
     void set_streams(std::list<scene::StreamInfo> const& streams) override;
     input::InputReceptionMode reception_mode() const override;
@@ -70,6 +70,15 @@ struct StubSurface : scene::Surface
     MirPointerConfinementState confine_pointer_state() const override;
     void placed_relative(geometry::Rectangle const& placement) override;
     void start_drag_and_drop(std::vector<uint8_t> const& handle) override;
+    MirDepthLayer depth_layer() const override;
+    void set_depth_layer(MirDepthLayer depth_layer) override;
+    std::experimental::optional<geometry::Rectangle> clip_area() const override;
+    void set_clip_area(std::experimental::optional<geometry::Rectangle> const& area) override;
+    MirWindowFocusState focus_state() const override;
+    void set_focus_state(MirWindowFocusState new_state) override;
+    std::string application_id() const override;
+    void set_application_id(std::string const& application_id) override;
+    std::weak_ptr<scene::Session> session() const  override;
 };
 }
 }

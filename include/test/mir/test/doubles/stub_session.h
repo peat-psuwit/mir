@@ -32,9 +32,6 @@ struct StubSession : scene::Session
 {
     StubSession(pid_t pid = -1);
 
-    std::shared_ptr<frontend::Surface> get_surface(
-        frontend::SurfaceId surface) const override;
-
     std::string name() const override;
 
     pid_t process_id() const override;
@@ -44,8 +41,6 @@ struct StubSession : scene::Session
     std::shared_ptr<scene::Surface> default_surface() const override;
 
     void set_lifecycle_state(MirLifecycleState state) override;
-
-    void send_display_config(graphics::DisplayConfiguration const&) override;
 
     void send_error(ClientVisibleError const&) override;
 
@@ -61,31 +56,24 @@ struct StubSession : scene::Session
 
     void resume_prompt_session() override;
 
-    frontend::SurfaceId create_surface(
+    auto create_surface(
+        std::shared_ptr<Session> const& session,
         scene::SurfaceCreationParameters const& params,
-        std::shared_ptr<frontend::EventSink> const& sink) override;
+        std::shared_ptr<scene::SurfaceObserver> const& observer) -> std::shared_ptr<scene::Surface> override;
 
-    void destroy_surface(frontend::SurfaceId surface) override;
+    void destroy_surface(std::shared_ptr<scene::Surface> const& surface) override;
 
-    std::shared_ptr<scene::Surface> surface(
-        frontend::SurfaceId surface) const override;
+    auto surface_after(
+        std::shared_ptr<scene::Surface> const&) const -> std::shared_ptr<scene::Surface> override;
 
-    std::shared_ptr<scene::Surface> surface_after(
-        std::shared_ptr<scene::Surface> const&) const override;
+    auto create_buffer_stream(
+        graphics::BufferProperties const& props) -> std::shared_ptr<compositor::BufferStream> override;
 
-    std::shared_ptr<frontend::BufferStream> get_buffer_stream(
-        frontend::BufferStreamId stream) const override;
-
-    frontend::BufferStreamId create_buffer_stream(
-        graphics::BufferProperties const& props) override;
-
-    void destroy_buffer_stream(frontend::BufferStreamId stream) override;
+    void destroy_buffer_stream(std::shared_ptr<frontend::BufferStream> const& stream) override;
 
     void configure_streams(
         scene::Surface& surface,
         std::vector<shell::StreamSpecification> const& config) override;
-
-    void destroy_surface(std::weak_ptr<scene::Surface> const& surface) override;
 
     void send_input_config(MirInputConfig const& config) override;
 

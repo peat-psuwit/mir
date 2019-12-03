@@ -14,26 +14,6 @@
 
 #include "mir/log.h"
 
-namespace
-{
-void internal_error_processing_request(struct wl_client* client, std::string const& method_name)
-{
-#if (WAYLAND_VERSION_MAJOR > 1 || (WAYLAND_VERSION_MAJOR == 1 && WAYLAND_VERSION_MINOR > 16))
-    wl_client_post_implementation_error(
-        client,
-        "Mir internal error processing %s request",
-        method_name.c_str());
-#else
-    wl_client_post_no_memory(client);
-#endif
-    ::mir::log(
-        ::mir::logging::Severity::error,
-        "frontend:Wayland",
-        std::current_exception(),
-        "Exception processing " + method_name + " request");
-}
-}
-
 namespace mir
 {
 namespace wayland
@@ -71,6 +51,8 @@ mw::XdgWmBase* mw::XdgWmBase::from(struct wl_resource* resource)
 
 struct mw::XdgWmBase::Thunks
 {
+    static int const supported_version;
+
     static void destroy_thunk(struct wl_client* client, struct wl_resource* resource)
     {
         auto me = static_cast<XdgWmBase*>(wl_resource_get_user_data(resource));
@@ -148,7 +130,7 @@ struct mw::XdgWmBase::Thunks
         auto resource = wl_resource_create(
             client,
             &xdg_wm_base_interface_data,
-            std::min(version, me->max_version),
+            std::min((int)version, Thunks::supported_version),
             id);
         if (resource == nullptr)
         {
@@ -172,7 +154,9 @@ struct mw::XdgWmBase::Thunks
     static void const* request_vtable[];
 };
 
-mw::XdgWmBase::XdgWmBase(struct wl_resource* resource)
+int const mw::XdgWmBase::Thunks::supported_version = 1;
+
+mw::XdgWmBase::XdgWmBase(struct wl_resource* resource, Version<1>)
     : client{wl_resource_get_client(resource)},
       resource{resource}
 {
@@ -198,24 +182,19 @@ void mw::XdgWmBase::destroy_wayland_object() const
     wl_resource_destroy(resource);
 }
 
-mw::XdgWmBase::Global::Global(wl_display* display, uint32_t max_version)
-    : global{wl_global_create(
-        display,
-        &xdg_wm_base_interface_data,
-        max_version,
-        this,
-        &Thunks::bind_thunk)},
-      max_version{max_version}
-{
-    if (global == nullptr)
-    {
-        BOOST_THROW_EXCEPTION((std::runtime_error{"Failed to export xdg_wm_base interface"}));
-    }
-}
+mw::XdgWmBase::Global::Global(wl_display* display, Version<1>)
+    : wayland::Global{
+          wl_global_create(
+              display,
+              &xdg_wm_base_interface_data,
+              Thunks::supported_version,
+              this,
+              &Thunks::bind_thunk)}
+{}
 
-mw::XdgWmBase::Global::~Global()
+auto mw::XdgWmBase::Global::interface_name() const -> char const*
 {
-    wl_global_destroy(global);
+    return XdgWmBase::interface_name;
 }
 
 struct wl_interface const* mw::XdgWmBase::Thunks::create_positioner_types[] {
@@ -249,6 +228,8 @@ mw::XdgPositioner* mw::XdgPositioner::from(struct wl_resource* resource)
 
 struct mw::XdgPositioner::Thunks
 {
+    static int const supported_version;
+
     static void destroy_thunk(struct wl_client* client, struct wl_resource* resource)
     {
         auto me = static_cast<XdgPositioner*>(wl_resource_get_user_data(resource));
@@ -349,7 +330,9 @@ struct mw::XdgPositioner::Thunks
     static void const* request_vtable[];
 };
 
-mw::XdgPositioner::XdgPositioner(struct wl_resource* resource)
+int const mw::XdgPositioner::Thunks::supported_version = 1;
+
+mw::XdgPositioner::XdgPositioner(struct wl_resource* resource, Version<1>)
     : client{wl_resource_get_client(resource)},
       resource{resource}
 {
@@ -397,6 +380,8 @@ mw::XdgSurface* mw::XdgSurface::from(struct wl_resource* resource)
 
 struct mw::XdgSurface::Thunks
 {
+    static int const supported_version;
+
     static void destroy_thunk(struct wl_client* client, struct wl_resource* resource)
     {
         auto me = static_cast<XdgSurface*>(wl_resource_get_user_data(resource));
@@ -493,7 +478,9 @@ struct mw::XdgSurface::Thunks
     static void const* request_vtable[];
 };
 
-mw::XdgSurface::XdgSurface(struct wl_resource* resource)
+int const mw::XdgSurface::Thunks::supported_version = 1;
+
+mw::XdgSurface::XdgSurface(struct wl_resource* resource, Version<1>)
     : client{wl_resource_get_client(resource)},
       resource{resource}
 {
@@ -553,6 +540,8 @@ mw::XdgToplevel* mw::XdgToplevel::from(struct wl_resource* resource)
 
 struct mw::XdgToplevel::Thunks
 {
+    static int const supported_version;
+
     static void destroy_thunk(struct wl_client* client, struct wl_resource* resource)
     {
         auto me = static_cast<XdgToplevel*>(wl_resource_get_user_data(resource));
@@ -760,7 +749,9 @@ struct mw::XdgToplevel::Thunks
     static void const* request_vtable[];
 };
 
-mw::XdgToplevel::XdgToplevel(struct wl_resource* resource)
+int const mw::XdgToplevel::Thunks::supported_version = 1;
+
+mw::XdgToplevel::XdgToplevel(struct wl_resource* resource, Version<1>)
     : client{wl_resource_get_client(resource)},
       resource{resource}
 {
@@ -857,6 +848,8 @@ mw::XdgPopup* mw::XdgPopup::from(struct wl_resource* resource)
 
 struct mw::XdgPopup::Thunks
 {
+    static int const supported_version;
+
     static void destroy_thunk(struct wl_client* client, struct wl_resource* resource)
     {
         auto me = static_cast<XdgPopup*>(wl_resource_get_user_data(resource));
@@ -894,7 +887,9 @@ struct mw::XdgPopup::Thunks
     static void const* request_vtable[];
 };
 
-mw::XdgPopup::XdgPopup(struct wl_resource* resource)
+int const mw::XdgPopup::Thunks::supported_version = 1;
+
+mw::XdgPopup::XdgPopup(struct wl_resource* resource, Version<1>)
     : client{wl_resource_get_client(resource)},
       resource{resource}
 {
@@ -948,31 +943,31 @@ namespace wayland
 
 struct wl_interface const xdg_wm_base_interface_data {
     mw::XdgWmBase::interface_name,
-    mw::XdgWmBase::interface_version,
+    mw::XdgWmBase::Thunks::supported_version,
     4, mw::XdgWmBase::Thunks::request_messages,
     1, mw::XdgWmBase::Thunks::event_messages};
 
 struct wl_interface const xdg_positioner_interface_data {
     mw::XdgPositioner::interface_name,
-    mw::XdgPositioner::interface_version,
+    mw::XdgPositioner::Thunks::supported_version,
     7, mw::XdgPositioner::Thunks::request_messages,
     0, nullptr};
 
 struct wl_interface const xdg_surface_interface_data {
     mw::XdgSurface::interface_name,
-    mw::XdgSurface::interface_version,
+    mw::XdgSurface::Thunks::supported_version,
     5, mw::XdgSurface::Thunks::request_messages,
     1, mw::XdgSurface::Thunks::event_messages};
 
 struct wl_interface const xdg_toplevel_interface_data {
     mw::XdgToplevel::interface_name,
-    mw::XdgToplevel::interface_version,
+    mw::XdgToplevel::Thunks::supported_version,
     14, mw::XdgToplevel::Thunks::request_messages,
     2, mw::XdgToplevel::Thunks::event_messages};
 
 struct wl_interface const xdg_popup_interface_data {
     mw::XdgPopup::interface_name,
-    mw::XdgPopup::interface_version,
+    mw::XdgPopup::Thunks::supported_version,
     2, mw::XdgPopup::Thunks::request_messages,
     2, mw::XdgPopup::Thunks::event_messages};
 

@@ -23,11 +23,9 @@
 #include "mir/abnormal_exit.h"
 #include "mir/shared_library_prober.h"
 #include "mir/logging/null_shared_library_prober_report.h"
-#include "mir/graphics/platform_probe.h"
 
 namespace mo = mir::options;
 
-char const* const mo::wayland_socket_name_opt     = "wayland-socket-name";
 char const* const mo::server_socket_opt           = "file,f";
 char const* const mo::prompt_socket_opt           = "prompt-file,p";
 char const* const mo::no_server_socket_opt        = "no-file";
@@ -46,7 +44,6 @@ char const* const mo::shared_library_prober_report_opt = "shared-library-prober-
 char const* const mo::shell_report_opt            = "shell-report";
 char const* const mo::host_socket_opt             = "host-socket";
 char const* const mo::nested_passthrough_opt      = "nested-passthrough";
-char const* const mo::frontend_threads_opt        = "ipc-thread-pool";
 char const* const mo::name_opt                    = "name";
 char const* const mo::offscreen_opt               = "offscreen";
 char const* const mo::touchspots_opt              = "enable-touchspots";
@@ -57,7 +54,7 @@ char const* const mo::composite_delay_opt         = "composite-delay";
 char const* const mo::enable_key_repeat_opt       = "enable-key-repeat";
 char const* const mo::x11_display_opt             = "x11-display-experimental";
 char const* const mo::wayland_extensions_opt      = "wayland-extensions";
-char const* const mo::wayland_extensions_value    = "wl_shell:xdg_wm_base:zxdg_shell_v6";
+char const* const mo::enable_mirclient_opt        = "enable-mirclient";
 
 char const* const mo::off_opt_value = "off";
 char const* const mo::log_opt_value = "log";
@@ -152,8 +149,6 @@ mo::DefaultConfiguration::DefaultConfiguration(
     namespace po = boost::program_options;
 
     add_options()
-        (wayland_socket_name_opt, po::value<std::string>(),
-         "Overrides the default socket name used for communicating with clients")
         (host_socket_opt, po::value<std::string>(),
             "Host socket filename")
         (server_socket_opt, po::value<std::string>()->default_value(::mir::default_server_socket),
@@ -214,6 +209,7 @@ mo::DefaultConfiguration::DefaultConfiguration(
             "in unexpected ways] throw an exception (instead of a core dump)")
         (debug_opt, "Enable extra development debugging. "
             "This is only interesting for people doing Mir server or client development.")
+        (enable_mirclient_opt, "Enable deprecated mirclient socket (for running old clients)")
         (console_provider,
             po::value<std::string>()->default_value("auto"),
             "Console device handling\n"

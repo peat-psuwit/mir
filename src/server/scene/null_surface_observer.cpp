@@ -22,7 +22,8 @@ namespace ms = mir::scene;
 namespace mg = mir::graphics;
 
 void ms::NullSurfaceObserver::attrib_changed(Surface const*, MirWindowAttrib, int) {}
-void ms::NullSurfaceObserver::resized_to(Surface const*, geometry::Size const&) {}
+void ms::NullSurfaceObserver::window_resized_to(Surface const*, geometry::Size const&) {}
+void ms::NullSurfaceObserver::content_resized_to(Surface const*, geometry::Size const&) {}
 void ms::NullSurfaceObserver::moved_to(Surface const*, geometry::Point const&) {}
 void ms::NullSurfaceObserver::hidden_set_to(Surface const*, bool) {}
 void ms::NullSurfaceObserver::frame_posted(Surface const*, int, geometry::Size const&) {}
@@ -44,3 +45,5 @@ void ms::NullSurfaceObserver::cursor_image_removed(Surface const*) {}
 void ms::NullSurfaceObserver::placed_relative(Surface const*, geometry::Rectangle const&) {}
 void ms::NullSurfaceObserver::input_consumed(Surface const*, MirEvent const*) {}
 void ms::NullSurfaceObserver::start_drag_and_drop(Surface const*, std::vector<uint8_t> const&) {}
+void ms::NullSurfaceObserver::depth_layer_set_to(Surface const*, MirDepthLayer) {}
+void ms::NullSurfaceObserver::application_id_set_to(Surface const*, std::string const&) {}

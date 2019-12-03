@@ -39,7 +39,7 @@
 #include "mir/test/event_factory.h"
 #include "mir/test/event_matchers.h"
 #include "mir/test/fake_shared.h"
-#include "mir/test/signal.h"
+#include "mir/test/signal_actions.h"
 #include "mir/test/spin_wait.h"
 
 #include "mir_toolkit/mir_client_library.h"
@@ -55,6 +55,7 @@ namespace mis = mi::synthesis;
 
 namespace mt = mir::test;
 namespace mg = mir::graphics;
+namespace ms  = mir::scene;
 namespace mtd = mt::doubles;
 namespace mtf = mir_test_framework;
 
@@ -71,16 +72,16 @@ struct SurfaceTrackingShell : mir::shell::ShellWrapper
         : ShellWrapper{wrapped_shell}, wrapped_shell{wrapped_shell}
     {}
 
-    mir::frontend::SurfaceId create_surface(
+    auto create_surface(
         std::shared_ptr<mir::scene::Session> const& session,
         mir::scene::SurfaceCreationParameters const& params,
-        std::shared_ptr<mir::frontend::EventSink> const& sink) override
+        std::shared_ptr<mir::scene::SurfaceObserver> const& observer) -> std::shared_ptr<ms::Surface> override
     {
-        auto surface_id = wrapped_shell->create_surface(session, params, sink);
+        auto surface = wrapped_shell->create_surface(session, params, observer);
 
-        tracked_surfaces[session->name()] =  TrackedSurface{session, surface_id};
+        tracked_surfaces[session->name()] =  TrackedSurface{surface};
 
-        return surface_id;
+        return surface;
     }
 
     std::shared_ptr<mir::scene::Surface> get_surface(std::string const& session_name)
@@ -88,16 +89,12 @@ struct SurfaceTrackingShell : mir::shell::ShellWrapper
         if (end(tracked_surfaces) == tracked_surfaces.find(session_name))
             return nullptr;
         TrackedSurface & tracked_surface = tracked_surfaces[session_name];
-        auto session = tracked_surface.session.lock();
-        if (!session)
-            return nullptr;
-        return session->surface(tracked_surface.surface);
+        return tracked_surface.surface;
     }
 
     struct TrackedSurface
     {
-        std::weak_ptr<mir::scene::Session> session;
-        mir::frontend::SurfaceId surface;
+        std::shared_ptr<mir::scene::Surface> surface;
     };
     std::unordered_map<std::string, TrackedSurface> tracked_surfaces;
     std::shared_ptr<mir::shell::Shell> wrapped_shell;

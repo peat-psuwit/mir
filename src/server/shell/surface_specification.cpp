@@ -20,6 +20,21 @@
 
 namespace msh = mir::shell;
 
+auto msh::operator==(SurfaceAspectRatio const& lhs, SurfaceAspectRatio const& rhs) -> bool
+{
+    return
+        lhs.width == rhs.width &&
+        lhs.height == rhs.height;
+}
+
+auto msh::operator==(StreamSpecification const& lhs, StreamSpecification const& rhs) -> bool
+{
+    return
+        lhs.stream.lock() == rhs.stream.lock() &&
+        lhs.displacement == rhs.displacement &&
+        lhs.size == rhs.size;
+}
+
 bool msh::SurfaceSpecification::is_empty() const
 {
     // You know, compile-time reflection would be pretty
@@ -47,7 +62,11 @@ bool msh::SurfaceSpecification::is_empty() const
         !streams.is_set() &&
         !parent.is_set() &&
         !input_shape.is_set() &&
-        !shell_chrome.is_set();
+        !shell_chrome.is_set() &&
+        !depth_layer.is_set() &&
+        !attached_edges.is_set() &&
+        !exclusive_rect.is_set() &&
+        !application_id.is_set();
 }
 
 void msh::SurfaceSpecification::update_from(SurfaceSpecification const& that)
@@ -116,4 +135,12 @@ void msh::SurfaceSpecification::update_from(SurfaceSpecification const& that)
         cursor_image = that.cursor_image;
     if (that.stream_cursor.is_set())
         stream_cursor = that.stream_cursor;
+    if (that.depth_layer.is_set())
+        depth_layer = that.depth_layer;
+    if (that.attached_edges.is_set())
+        attached_edges = that.attached_edges;
+    if (that.exclusive_rect.is_set())
+        exclusive_rect = that.exclusive_rect;
+    if (that.application_id.is_set())
+        application_id = that.application_id;
 }

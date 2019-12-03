@@ -18,10 +18,10 @@
 
 #include "mir/events/event_private.h"
 #include "mir/events/event_builders.h"
+#include "mir/scene/output_properties_cache.h"
 #include "src/server/scene/basic_surface.h"
 #include "src/server/scene/legacy_surface_change_notification.h"
 #include "src/server/report/null_report_factory.h"
-#include "src/server/scene/output_properties_cache.h"
 #include "mir/frontend/event_sink.h"
 #include "mir/scene/surface_creation_parameters.h"
 #include "mir/scene/surface_event_source.h"
@@ -175,10 +175,14 @@ namespace
 struct SurfaceCreation : public ::testing::Test
 {
     SurfaceCreation()
-        : surface(surface_name,
-            rect, mir_pointer_unconfined,
+        : surface(
+            nullptr /* session */,
+            surface_name,
+            rect,
+            mir_pointer_unconfined,
             streams,
-            nullptr /* cursor_image */, report)
+            nullptr /* cursor_image */,
+            report)
     {
     }
 
@@ -220,7 +224,7 @@ TEST_F(SurfaceCreation, test_surface_gets_right_name)
 
 TEST_F(SurfaceCreation, test_surface_queries_state_for_size)
 {
-    EXPECT_EQ(size, surface.size());
+    EXPECT_EQ(size, surface.window_size());
 }
 
 TEST_F(SurfaceCreation, test_surface_gets_top_left)
@@ -244,15 +248,15 @@ TEST_F(SurfaceCreation, resize_updates_stream_and_state)
 
     auto const mock_event_sink = std::make_shared<mt::doubles::MockEventSink>();
     ms::OutputPropertiesCache cache;
-    auto const observer = std::make_shared<ms::SurfaceEventSource>(mf::SurfaceId(), surface, cache, mock_event_sink);
+    auto const observer = std::make_shared<ms::SurfaceEventSource>(mf::SurfaceId(), cache, mock_event_sink);
 
     surface.add_observer(observer);
 
-    ASSERT_THAT(surface.size(), Ne(new_size));
+    ASSERT_THAT(surface.window_size(), Ne(new_size));
 
     EXPECT_CALL(*mock_event_sink, handle_event(_)).Times(1);
     surface.resize(new_size);
-    EXPECT_THAT(surface.size(), Eq(new_size));
+    EXPECT_THAT(surface.window_size(), Eq(new_size));
 }
 
 TEST_F(SurfaceCreation, duplicate_resize_ignored)
@@ -261,22 +265,22 @@ TEST_F(SurfaceCreation, duplicate_resize_ignored)
     geom::Size const new_size{123, 456};
     auto const mock_event_sink = std::make_shared<mt::doubles::MockEventSink>();
     ms::OutputPropertiesCache cache;
-    auto const observer = std::make_shared<ms::SurfaceEventSource>(mf::SurfaceId(), surface, cache, mock_event_sink);
+    auto const observer = std::make_shared<ms::SurfaceEventSource>(mf::SurfaceId(), cache, mock_event_sink);
 
     surface.add_observer(observer);
 
-    ASSERT_THAT(surface.size(), Ne(new_size));
+    ASSERT_THAT(surface.window_size(), Ne(new_size));
 
     EXPECT_CALL(*mock_event_sink, handle_event(_)).Times(1);
     surface.resize(new_size);
-    EXPECT_THAT(surface.size(), Eq(new_size));
+    EXPECT_THAT(surface.window_size(), Eq(new_size));
 
     Mock::VerifyAndClearExpectations(mock_buffer_stream.get());
     Mock::VerifyAndClearExpectations(mock_event_sink.get());
 
     EXPECT_CALL(*mock_event_sink, handle_event(_)).Times(0);
     surface.resize(new_size);
-    EXPECT_THAT(surface.size(), Eq(new_size));
+    EXPECT_THAT(surface.window_size(), Eq(new_size));
 }
 
 TEST_F(SurfaceCreation, impossible_resize_clamps)
@@ -301,7 +305,7 @@ TEST_F(SurfaceCreation, impossible_resize_clamps)
             expect_size.height = geom::Height{1};
 
         EXPECT_NO_THROW({ surface.resize(size); });
-        EXPECT_EQ(expect_size, surface.size());
+        EXPECT_EQ(expect_size, surface.window_size());
     }
 }
 
@@ -309,6 +313,7 @@ TEST_F(SurfaceCreation, consume_calls_send_event)
 {
     using namespace testing;
     ms::BasicSurface surface(
+        nullptr /* session */,
         surface_name,
         rect,
         mir_pointer_unconfined,
@@ -325,7 +330,7 @@ TEST_F(SurfaceCreation, consume_calls_send_event)
 
     auto const mock_event_sink = std::make_shared<mt::doubles::MockEventSink>();
     ms::OutputPropertiesCache cache;
-    auto const observer = std::make_shared<ms::SurfaceEventSource>(mf::SurfaceId(), surface, cache, mock_event_sink);
+    auto const observer = std::make_shared<ms::SurfaceEventSource>(mf::SurfaceId(), cache, mock_event_sink);
 
     surface.add_observer(observer);
 

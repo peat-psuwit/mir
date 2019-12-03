@@ -20,8 +20,9 @@
 
 #include <libxml++/libxml++.h>
 
-Global::Global(std::string const& wl_name, std::string const& generated_name, std::string const& nmspace)
+Global::Global(std::string const& wl_name, std::string const& generated_name, int version, std::string const& nmspace)
     : wl_name{wl_name},
+      version{version},
       generated_name{generated_name},
       nmspace{nmspace}
 {
@@ -30,14 +31,13 @@ Global::Global(std::string const& wl_name, std::string const& generated_name, st
 Emitter Global::declaration() const
 {
     return Lines{
-        {"class Global"},
+        {"class Global : public wayland::Global"},
         "{",
         "public:",
         Emitter::layout(Lines{
             {"Global(", constructor_args(), ");"},
-            "virtual ~Global();",
             empty_line,
-            member_vars(),
+            {"auto interface_name() const -> char const* override;"}
         }, true, true, Emitter::single_indent),
         empty_line,
         "private:",
@@ -54,26 +54,22 @@ Emitter Global::implementation() const
     return EmptyLineList{
         Lines{
             {nmspace, "Global::Global(", constructor_args(), ")"},
-            {"    : global{wl_global_create("},
-            {"        display,"},
-            {"        &", wl_name, "_interface_data,"},
-            {"        max_version,"},
-            {"        this,"},
-            {"        &Thunks::bind_thunk)},"},
-            {"      max_version{max_version}"},
+            {"    : wayland::Global{"},
+            {"          wl_global_create("},
+            {"              display,"},
+            {"              &", wl_name, "_interface_data,"},
+            {"              Thunks::supported_version,"},
+            {"              this,"},
+            {"              &Thunks::bind_thunk)}"},
             Block{
-                "if (global == nullptr)",
-                Block{
-                    {"BOOST_THROW_EXCEPTION((std::runtime_error{\"Failed to export ", wl_name, " interface\"}));"}
-                }
             }
         },
         Lines{
-            {nmspace, "Global::~Global()"},
+            {"auto ", nmspace, "Global::interface_name() const -> char const*"},
             Block{
-                "wl_global_destroy(global);"
+                {"return ", generated_name, "::interface_name;"},
             }
-        },
+        }
     };
 }
 
@@ -87,7 +83,7 @@ Emitter Global::bind_thunk_impl() const
             Emitter::layout(Lines{
                 "client,",
                 {"&", wl_name, "_interface_data,"},
-                "std::min(version, me->max_version),",
+                {"std::min((int)version, Thunks::supported_version),"},
                 "id);",
             }, true, true, Emitter::single_indent),
             "if (resource == nullptr)",
@@ -109,18 +105,10 @@ Emitter Global::bind_thunk_impl() const
 
 Emitter Global::constructor_args() const
 {
-    return {"wl_display* display, uint32_t max_version"};
+    return {"wl_display* display, Version<", std::to_string(version), ">"};
 }
 
 Emitter Global::bind_prototype() const
 {
     return {"virtual void bind(wl_resource* new_", wl_name, ") = 0;"};
-}
-
-Emitter Global::member_vars() const
-{
-    return Lines{
-        "wl_global* const global;",
-        "uint32_t const max_version;",
-    };
 }

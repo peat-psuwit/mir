@@ -18,10 +18,8 @@
 
 #include "application_session.h"
 #include "snapshot_strategy.h"
-#include "output_properties_cache.h"
 
 #include "mir/scene/surface.h"
-#include "mir/scene/surface_event_source.h"
 #include "mir/scene/surface_creation_parameters.h"
 #include "mir/scene/session_container.h"
 #include "mir/scene/session_listener.h"
@@ -32,6 +30,7 @@
 #include "mir/events/event_builders.h"
 #include "mir/frontend/event_sink.h"
 #include "mir/graphics/graphic_buffer_allocator.h"
+#include "mir/scene/surface_observer.h"
 
 #include <boost/throw_exception.hpp>
 
@@ -56,9 +55,8 @@ ms::ApplicationSession::ApplicationSession(
     std::string const& session_name,
     std::shared_ptr<SnapshotStrategy> const& snapshot_strategy,
     std::shared_ptr<SessionListener> const& session_listener,
-    mg::DisplayConfiguration const& initial_config,
     std::shared_ptr<mf::EventSink> const& sink,
-    std::shared_ptr<graphics::GraphicBufferAllocator> const& gralloc) : 
+    std::shared_ptr<graphics::GraphicBufferAllocator> const& gralloc) :
     surface_stack(surface_stack),
     surface_factory(surface_factory),
     buffer_stream_factory(buffer_stream_factory),
@@ -67,38 +65,33 @@ ms::ApplicationSession::ApplicationSession(
     snapshot_strategy(snapshot_strategy),
     session_listener(session_listener),
     event_sink(sink),
-    gralloc(gralloc),
-    next_surface_id(0)
+    gralloc(gralloc)
 {
     assert(surface_stack);
-    output_cache.update_from(initial_config);
 }
 
 ms::ApplicationSession::~ApplicationSession()
 {
     std::unique_lock<std::mutex> lock(surfaces_and_streams_mutex);
-    for (auto const& pair_id_surface : surfaces)
+    for (auto const& surface : surfaces)
     {
-        session_listener->destroying_surface(*this, pair_id_surface.second);
-        surface_stack->remove_surface(pair_id_surface.second);
+        session_listener->destroying_surface(*this, surface);
+        surface_stack->remove_surface(surface);
     }
 }
 
-mf::SurfaceId ms::ApplicationSession::next_id()
-{
-    return mf::SurfaceId(next_surface_id.fetch_add(1));
-}
-
-mf::SurfaceId ms::ApplicationSession::create_surface(
+auto ms::ApplicationSession::create_surface(
+    std::shared_ptr<Session> const& session,
     SurfaceCreationParameters const& the_params,
-    std::shared_ptr<mf::EventSink> const& surface_sink)
+    std::shared_ptr<ms::SurfaceObserver> const& observer) -> std::shared_ptr<Surface>
 {
-    auto const id = next_id();
+    if (session && session.get() != this)
+        fatal_error("Incorrect session");
 
-    //TODO: we take either the content_id or the first streams content for now.
+    //TODO: we take either the content or the first stream's content for now.
     //      Once the surface factory interface takes more than one stream,
     //      we can take all the streams as content.
-    if (!((the_params.content_id.is_set()) ||
+    if (!((the_params.content.lock()) ||
           (the_params.streams.is_set() && the_params.streams.value().size() > 0)))
     {
         BOOST_THROW_EXCEPTION(std::logic_error("surface must have content"));
@@ -106,51 +99,42 @@ mf::SurfaceId ms::ApplicationSession::create_surface(
 
     auto params = the_params;
 
-    mf::BufferStreamId stream_id;
     std::shared_ptr<mc::BufferStream> buffer_stream;
-    if (params.content_id.is_set())
+    if (auto const stream = params.content.lock())
     {
-        stream_id = params.content_id.value();
-        buffer_stream = checked_find(stream_id)->second;
+        buffer_stream = std::dynamic_pointer_cast<mc::BufferStream>(stream);
     }
     else
     {
-        stream_id = params.streams.value()[0].stream_id;
-        buffer_stream = checked_find(stream_id)->second;
+        buffer_stream = std::dynamic_pointer_cast<mc::BufferStream>(params.streams.value()[0].stream.lock());
     }
 
-    if (params.parent_id.is_set())
-        params.parent = checked_find(the_params.parent_id.value())->second;
-
     std::list<StreamInfo> streams;
-    if (the_params.content_id.is_set())
+    if (auto const stream = the_params.content.lock())
     {
-        streams.push_back({checked_find(the_params.content_id.value())->second, {0,0}, the_params.size});
+        streams.push_back({std::dynamic_pointer_cast<mc::BufferStream>(stream), {0,0}, the_params.size});
     }
     else
     {
         for (auto& stream : params.streams.value())
-            streams.push_back({checked_find(stream.stream_id)->second, stream.displacement, stream.size});
+            streams.push_back({std::dynamic_pointer_cast<mc::BufferStream>(stream.stream.lock()), stream.displacement, stream.size});
     }
 
-    auto surface = surface_factory->create_surface(streams, params);
+    auto surface = surface_factory->create_surface(session, streams, params);
 
     surface_stack->add_surface(surface, params.input_mode);
 
-    auto const observer = std::make_shared<scene::SurfaceEventSource>(
-        id,
-        *surface,
-        output_cache,
-        surface_sink);
-    surface->add_observer(observer);
+    if (observer)
+        surface->add_observer(observer);
 
     {
         std::unique_lock<std::mutex> lock(surfaces_and_streams_mutex);
-        surfaces[id] = surface;
-        default_content_map[id] = stream_id;
+        surfaces.push_back(surface);
+        default_content_map[surface] = buffer_stream;
     }
 
-    observer->moved_to(surface.get(), surface->top_left());
+    if (observer)
+        observer->moved_to(surface.get(), surface->top_left());
 
     session_listener->surface_created(*this, surface);
 
@@ -162,35 +146,31 @@ mf::SurfaceId ms::ApplicationSession::create_surface(
         surface->configure(mir_window_attrib_preferred_orientation, params.preferred_orientation.value());
     if (params.input_shape.is_set())
         surface->set_input_region(params.input_shape.value());
+    if (params.depth_layer.is_set())
+        surface->set_depth_layer(params.depth_layer.value());
+    if (params.application_id.is_set())
+        surface->set_application_id(params.application_id.value());
 
-    return id;
+    return surface;
 }
 
-ms::ApplicationSession::Surfaces::const_iterator ms::ApplicationSession::checked_find(mf::SurfaceId id) const
+void ms::ApplicationSession::destroy_surface(std::shared_ptr<Surface> const& surface)
 {
-    auto p = surfaces.find(id);
-    if (p == surfaces.end())
-        BOOST_THROW_EXCEPTION(std::runtime_error("Invalid SurfaceId"));
-    return p;
-}
+    {
+        std::unique_lock<std::mutex> lock(surfaces_and_streams_mutex);
 
-ms::ApplicationSession::Streams::const_iterator ms::ApplicationSession::checked_find(mf::BufferStreamId id) const
-{
-    auto p = streams.find(id);
-    if (p == streams.end())
-        BOOST_THROW_EXCEPTION(std::runtime_error("Invalid BufferStreamId"));
-    return p;
-}
+        auto default_content_map_iter = default_content_map.find(surface);
+        auto surface_iter = std::find(surfaces.begin(), surfaces.end(), surface);
 
-std::shared_ptr<mf::Surface> ms::ApplicationSession::get_surface(mf::SurfaceId id) const
-{
-    return surface(id);
-}
+        if (default_content_map_iter == default_content_map.end() || surface_iter == surfaces.end())
+            BOOST_THROW_EXCEPTION(std::runtime_error("Invalid surface"));
 
-std::shared_ptr<ms::Surface> ms::ApplicationSession::surface(mf::SurfaceId id) const
-{
-    std::unique_lock<std::mutex> lock(surfaces_and_streams_mutex);
-    return checked_find(id)->second;
+        session_listener->destroying_surface(*this, surface);
+        default_content_map.erase(default_content_map_iter);
+        surfaces.erase(surface_iter);
+    }
+
+    surface_stack->remove_surface(surface);
 }
 
 std::shared_ptr<ms::Surface> ms::ApplicationSession::surface_after(std::shared_ptr<ms::Surface> const& before) const
@@ -199,16 +179,16 @@ std::shared_ptr<ms::Surface> ms::ApplicationSession::surface_after(std::shared_p
     auto current = surfaces.begin();
     for (; current != surfaces.end(); ++current)
     {
-        if (current->second == before)
+        if (*current == before)
             break;
     }
 
     if (current == surfaces.end())
         BOOST_THROW_EXCEPTION(std::runtime_error("surface_after: surface is not a member of this session"));
 
-    auto const can_take_focus = [](Surfaces::value_type const &s)
+    auto const can_take_focus = [](std::shared_ptr<scene::Surface> const &s)
         {
-            switch (s.second->type())
+            switch (s->type())
             {
             case mir_window_type_normal:       /**< AKA "regular"                       */
             case mir_window_type_utility:      /**< AKA "floating"                      */
@@ -236,7 +216,7 @@ std::shared_ptr<ms::Surface> ms::ApplicationSession::surface_after(std::shared_p
     if (next == end(surfaces))
         return {};
 
-    return next->second;
+    return *next;
 }
 
 void ms::ApplicationSession::take_snapshot(SnapshotCallback const& snapshot_taken)
@@ -246,10 +226,13 @@ void ms::ApplicationSession::take_snapshot(SnapshotCallback const& snapshot_take
     //info to cobble together a snapshot buffer without WM info.
     for(auto const& surface_it : surfaces)
     {
-        if (default_surface() == surface_it.second)
+        if (default_surface() == surface_it)
         {
-            auto id = default_content_map[surface_it.first];
-            snapshot_strategy->take_snapshot_of(checked_find(id)->second, snapshot_taken);
+            auto content = default_content_map[surface_it].lock();
+            if (!content)
+                BOOST_THROW_EXCEPTION(std::logic_error(
+                    "Buffer was dropped without being removed from default_content_map"));
+            snapshot_strategy->take_snapshot_of(content, snapshot_taken);
             return;
         }
     }
@@ -261,17 +244,10 @@ std::shared_ptr<ms::Surface> ms::ApplicationSession::default_surface() const
 {
     std::unique_lock<std::mutex> lock(surfaces_and_streams_mutex);
 
-    if (surfaces.size())
-        return surfaces.begin()->second;
+    if (!surfaces.empty())
+        return *surfaces.begin();
     else
         return std::shared_ptr<ms::Surface>();
-}
-
-void ms::ApplicationSession::destroy_surface(mf::SurfaceId id)
-{
-    std::unique_lock<std::mutex> lock(surfaces_and_streams_mutex);
-
-    destroy_surface(lock, checked_find(id));
 }
 
 std::string ms::ApplicationSession::name() const
@@ -287,46 +263,18 @@ pid_t ms::ApplicationSession::process_id() const
 void ms::ApplicationSession::hide()
 {
     std::unique_lock<std::mutex> lock(surfaces_and_streams_mutex);
-    for (auto& id_s : surfaces)
+    for (auto& surface : surfaces)
     {
-        id_s.second->hide();
+        surface->hide();
     }
 }
 
 void ms::ApplicationSession::show()
 {
     std::unique_lock<std::mutex> lock(surfaces_and_streams_mutex);
-    for (auto& id_s : surfaces)
-    {
-        id_s.second->show();
-    }
-}
-
-void ms::ApplicationSession::send_display_config(mg::DisplayConfiguration const& info)
-{
-    output_cache.update_from(info);
-
-    event_sink->handle_display_config_change(info);
-
-    std::lock_guard<std::mutex> lock{surfaces_and_streams_mutex};
     for (auto& surface : surfaces)
     {
-        auto output_properties = output_cache.properties_for(geometry::Rectangle{
-            surface.second->top_left(),
-            surface.second->size()});
-
-        if (output_properties)
-        {
-            event_sink->handle_event(
-                mev::make_event(
-                    surface.first,
-                    output_properties->dpi,
-                    output_properties->scale,
-                    output_properties->refresh_rate,
-                    output_properties->form_factor,
-                    static_cast<uint32_t>(output_properties->id.as_value())
-                    ));
-        }
+        surface->show();
     }
 }
 
@@ -361,31 +309,25 @@ void ms::ApplicationSession::resume_prompt_session()
     start_prompt_session();
 }
 
-std::shared_ptr<mf::BufferStream> ms::ApplicationSession::get_buffer_stream(mf::BufferStreamId id) const
+auto ms::ApplicationSession::create_buffer_stream(mg::BufferProperties const& props)
+    -> std::shared_ptr<compositor::BufferStream>
 {
-    std::unique_lock<std::mutex> lock(surfaces_and_streams_mutex);
-    return checked_find(id)->second;
-}
-
-mf::BufferStreamId ms::ApplicationSession::create_buffer_stream(mg::BufferProperties const& props)
-{
-    auto const id = static_cast<mf::BufferStreamId>(next_id().as_value());
-    auto stream = buffer_stream_factory->create_buffer_stream(id, props);
+    auto stream = buffer_stream_factory->create_buffer_stream(props);
     session_listener->buffer_stream_created(*this, stream);
 
     std::unique_lock<std::mutex> lock(surfaces_and_streams_mutex);
-    streams[id] = stream;
-    return id;
+    streams.insert(stream);
+    return stream;
 }
 
-void ms::ApplicationSession::destroy_buffer_stream(mf::BufferStreamId id)
+void ms::ApplicationSession::destroy_buffer_stream(std::shared_ptr<frontend::BufferStream> const& stream)
 {
     std::unique_lock<std::mutex> lock(surfaces_and_streams_mutex);
-    auto stream_it = streams.find(mir::frontend::BufferStreamId(id.as_value()));
+    auto stream_it = streams.find(std::dynamic_pointer_cast<compositor::BufferStream>(stream));
     if (stream_it == streams.end())
-        BOOST_THROW_EXCEPTION(std::runtime_error("cannot destroy stream: Invalid BufferStreamId"));
+        BOOST_THROW_EXCEPTION(std::runtime_error("cannot destroy stream: Invalid BufferStream"));
 
-    session_listener->buffer_stream_destroyed(*this, stream_it->second);
+    session_listener->buffer_stream_destroyed(*this, *stream_it);
     streams.erase(stream_it);
 }
 
@@ -395,38 +337,16 @@ void ms::ApplicationSession::configure_streams(
     std::list<ms::StreamInfo> list;
     for (auto& stream : streams)
     {
-        auto s = checked_find(stream.stream_id)->second;
-        list.emplace_back(ms::StreamInfo{s, stream.displacement, stream.size});
+        if (auto const s = std::dynamic_pointer_cast<mc::BufferStream>(stream.stream.lock()))
+            list.emplace_back(ms::StreamInfo{s, stream.displacement, stream.size});
     }
     surface.set_streams(list); 
 }
 
-void ms::ApplicationSession::destroy_surface(std::weak_ptr<Surface> const& surface)
+auto ms::ApplicationSession::has_buffer_stream(
+    std::shared_ptr<mc::BufferStream> const& stream) -> bool
 {
-    auto const ss = surface.lock();
-    std::unique_lock<std::mutex> lock(surfaces_and_streams_mutex);
-    auto p = find_if(begin(surfaces), end(surfaces), [&](Surfaces::value_type const& val)
-        { return val.second == ss; });
-
-    if (p == surfaces.end())
-        BOOST_THROW_EXCEPTION(std::runtime_error("Invalid Surface"));
-
-    destroy_surface(lock, p);
-}
-
-void ms::ApplicationSession::destroy_surface(std::unique_lock<std::mutex>& lock, Surfaces::const_iterator in_surfaces)
-{
-    auto const surface = in_surfaces->second;
-    auto it = default_content_map.find(in_surfaces->first); 
-    session_listener->destroying_surface(*this, surface);
-    surfaces.erase(in_surfaces);
-
-    if (it != default_content_map.end())
-        default_content_map.erase(it);
-
-    lock.unlock();
-
-    surface_stack->remove_surface(surface);
+    return streams.find(stream) != streams.end();
 }
 
 void ms::ApplicationSession::send_error(mir::ClientVisibleError const& error)

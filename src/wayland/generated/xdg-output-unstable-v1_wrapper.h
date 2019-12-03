@@ -13,20 +13,24 @@
 #include "mir/fd.h"
 #include <wayland-server-core.h>
 
+#include "mir/wayland/wayland_base.h"
+
 namespace mir
 {
 namespace wayland
 {
 
-class XdgOutputManagerV1
+class XdgOutputManagerV1;
+class XdgOutputV1;
+
+class XdgOutputManagerV1 : public Resource
 {
 public:
     static char const constexpr* interface_name = "zxdg_output_manager_v1";
-    static int const interface_version = 2;
 
     static XdgOutputManagerV1* from(struct wl_resource*);
 
-    XdgOutputManagerV1(struct wl_resource* resource);
+    XdgOutputManagerV1(struct wl_resource* resource, Version<3>);
     virtual ~XdgOutputManagerV1() = default;
 
     void destroy_wayland_object() const;
@@ -38,14 +42,12 @@ public:
 
     static bool is_instance(wl_resource* resource);
 
-    class Global
+    class Global : public wayland::Global
     {
     public:
-        Global(wl_display* display, uint32_t max_version);
-        virtual ~Global();
+        Global(wl_display* display, Version<3>);
 
-        wl_global* const global;
-        uint32_t const max_version;
+        auto interface_name() const -> char const* override;
 
     private:
         virtual void bind(wl_resource* new_zxdg_output_manager_v1) = 0;
@@ -57,15 +59,14 @@ private:
     virtual void get_xdg_output(struct wl_resource* id, struct wl_resource* output) = 0;
 };
 
-class XdgOutputV1
+class XdgOutputV1 : public Resource
 {
 public:
     static char const constexpr* interface_name = "zxdg_output_v1";
-    static int const interface_version = 2;
 
     static XdgOutputV1* from(struct wl_resource*);
 
-    XdgOutputV1(struct wl_resource* resource);
+    XdgOutputV1(struct wl_resource* resource, Version<3>);
     virtual ~XdgOutputV1() = default;
 
     void send_logical_position_event(int32_t x, int32_t y) const;

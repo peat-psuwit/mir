@@ -101,6 +101,7 @@ set(MIR_SERVER_OBJECTS
 )
 
 set(MIR_SERVER_REFERENCES
+  ${DRM_LDFLAGS} ${DRM_LIBRARIES}
   ${EGL_LDFLAGS} ${EGL_LIBRARIES}
   ${GL_LDFLAGS} ${GL_LIBRARIES}
   ${EPOXY_LDFLAGS} ${EPOXY_LIBRARIES}
@@ -128,6 +129,7 @@ target_link_libraries(mirserver LINK_PUBLIC
   mirwayland
 
   server_platform_common
+  ${DRM_LDFLAGS} ${DRM_LIBRARIES}
   ${EGL_LDFLAGS} ${EGL_LIBRARIES}
   ${GL_LDFLAGS} ${GL_LIBRARIES}
   ${EPOXY_LDFLAGS} ${EPOXY_LIBRARIES}
@@ -161,7 +163,7 @@ install(DIRECTORY
   ${CMAKE_SOURCE_DIR}/include/server/mir DESTINATION "include/mirserver"
 )
 
-set(MIRSERVER_ABI 48) # Be sure to increment MIR_VERSION_MINOR at the same time
+set(MIRSERVER_ABI 52) # Be sure to increment MIR_VERSION_MINOR at the same time
 set(symbol_map ${CMAKE_CURRENT_SOURCE_DIR}/symbols.map)
 
 set_target_properties(

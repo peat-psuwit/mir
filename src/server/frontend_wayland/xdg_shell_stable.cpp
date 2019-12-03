@@ -19,15 +19,20 @@
 #include "xdg_shell_stable.h"
 
 #include "wl_surface.h"
-#include "window_wl_surface_role.h"
+#include "wayland_utils.h"
 
-#include "mir/frontend/session.h"
+#include "mir/frontend/mir_client_session.h"
 #include "mir/frontend/wayland.h"
 #include "mir/shell/surface_specification.h"
 #include "mir/log.h"
 
+#include <boost/throw_exception.hpp>
+
 namespace mf = mir::frontend;
+namespace ms = mir::scene;
+namespace msh = mir::shell;
 namespace geom = mir::geometry;
+namespace mw = mir::wayland;
 
 namespace mir
 {
@@ -69,32 +74,6 @@ public:
     XdgShellStable const& xdg_shell;
 };
 
-class XdgPopupStable : wayland::XdgPopup, public WindowWlSurfaceRole
-{
-public:
-    XdgPopupStable(
-        wl_resource* new_resource,
-        XdgSurfaceStable* xdg_surface,
-        WlSurfaceRole* parent_role,
-        wl_resource* positioner,
-        WlSurface* surface);
-
-    void grab(struct wl_resource* seat, uint32_t serial) override;
-    void destroy() override;
-
-    void handle_state_change(MirWindowState /*new_state*/) override {};
-    void handle_active_change(bool /*is_now_active*/) override {};
-    void handle_resize(
-        std::experimental::optional<geometry::Point> const& new_top_left,
-        geometry::Size const& new_size) override;
-
-private:
-    std::experimental::optional<geom::Point> cached_top_left;
-    std::experimental::optional<geom::Size> cached_size;
-
-    XdgSurfaceStable* const xdg_surface;
-};
-
 class XdgToplevelStable : wayland::XdgToplevel, public WindowWlSurfaceRole
 {
 public:
@@ -106,7 +85,7 @@ public:
     void destroy() override;
     void set_parent(std::experimental::optional<struct wl_resource*> const& parent) override;
     void set_title(std::string const& title) override;
-    void set_app_id(std::string const& /*app_id*/) override;
+    void set_app_id(std::string const& app_id) override;
     void show_window_menu(struct wl_resource* seat, uint32_t serial, int32_t x, int32_t y) override;
     void move(struct wl_resource* seat, uint32_t serial) override;
     void resize(struct wl_resource* seat, uint32_t serial, uint32_t edges) override;
@@ -118,14 +97,16 @@ public:
     void unset_fullscreen() override;
     void set_minimized() override;
 
+    void handle_commit() override {};
     void handle_state_change(MirWindowState /*new_state*/) override;
     void handle_active_change(bool /*is_now_active*/) override;
     void handle_resize(std::experimental::optional<geometry::Point> const& new_top_left,
                        geometry::Size const& new_size) override;
+    void handle_close_request() override;
 
 private:
     static XdgToplevelStable* from(wl_resource* surface);
-    void send_configure(std::experimental::optional<geometry::Size> new_size);
+    void send_toplevel_configure();
 
     XdgSurfaceStable* const xdg_surface;
 };
@@ -165,9 +146,12 @@ private:
 
 // XdgShellStable
 
-mf::XdgShellStable::XdgShellStable(struct wl_display* display, std::shared_ptr<mf::Shell> const shell, WlSeat& seat,
-                                   OutputManager* output_manager)
-    : Global(display, 1),
+mf::XdgShellStable::XdgShellStable(
+    struct wl_display* display,
+    std::shared_ptr<msh::Shell> shell,
+    WlSeat& seat,
+    OutputManager* output_manager)
+    : Global(display, Version<1>()),
       shell{shell},
       seat{seat},
       output_manager{output_manager}
@@ -180,7 +164,7 @@ void mf::XdgShellStable::bind(wl_resource* new_resource)
 }
 
 mf::XdgShellStable::Instance::Instance(wl_resource* new_resource, mf::XdgShellStable* shell)
-    : XdgWmBase{new_resource},
+    : XdgWmBase{new_resource, Version<1>()},
       shell{shell}
 {
 }
@@ -215,7 +199,7 @@ mf::XdgSurfaceStable* mf::XdgSurfaceStable::from(wl_resource* surface)
 }
 
 mf::XdgSurfaceStable::XdgSurfaceStable(wl_resource* new_resource, WlSurface* surface, XdgShellStable const& xdg_shell)
-    : wayland::XdgSurface(new_resource),
+    : mw::XdgSurface(new_resource, Version<1>()),
       surface{surface},
       xdg_shell{xdg_shell}
 {
@@ -237,30 +221,29 @@ void mf::XdgSurfaceStable::get_popup(
     std::experimental::optional<struct wl_resource*> const& parent_surface,
     wl_resource* positioner)
 {
-    auto parent_xdg_surface = parent_surface ?
-                                  std::experimental::make_optional(XdgSurfaceStable::from(parent_surface.value()))
-                                  : std::experimental::nullopt;
-
-    auto parent_window_role = parent_xdg_surface ?
-                                  parent_xdg_surface.value()->window_role()
-                                  : std::experimental::nullopt;
-
-    if  (!parent_window_role)
+    std::experimental::optional<WlSurfaceRole*> parent_role;
+    if (parent_surface)
     {
-        // When we implement layer shell, it will be more clear why this function might be called with a null parent,
-        // and we can revisit handling it then.
-        log_warning("tried to create XDG shell stable popup without a parent");
-        return;
+        XdgSurfaceStable* parent_xdg_surface = XdgSurfaceStable::from(parent_surface.value());
+        std::experimental::optional<WindowWlSurfaceRole*> parent_window_role = parent_xdg_surface->window_role();
+        if (parent_window_role)
+            parent_role = static_cast<WlSurfaceRole*>(parent_window_role.value());
+        else
+            log_warning("Parent window of a popup has no role");
     }
 
-    auto popup = new XdgPopupStable{new_popup, this, parent_window_role.value(), positioner, surface};
+    auto popup = new XdgPopupStable{new_popup, this, parent_role, positioner, surface};
     set_window_role(popup);
 }
 
 void mf::XdgSurfaceStable::set_window_geometry(int32_t x, int32_t y, int32_t width, int32_t height)
 {
     if (auto& role = window_role())
-        role.value()->set_geometry(x, y, width, height);
+    {
+        role.value()->set_pending_offset(geom::Displacement{-x, -y});
+        role.value()->set_pending_width(geom::Width{width});
+        role.value()->set_pending_height(geom::Height{height});
+    }
 }
 
 void mf::XdgSurfaceStable::ack_configure(uint32_t serial)
@@ -300,13 +283,13 @@ void mf::XdgSurfaceStable::set_window_role(WindowWlSurfaceRole* role)
 mf::XdgPopupStable::XdgPopupStable(
     wl_resource* new_resource,
     XdgSurfaceStable* xdg_surface,
-    WlSurfaceRole* parent_role,
-    wl_resource* positioner,
+    std::experimental::optional<WlSurfaceRole*> parent_role,
+    struct wl_resource* positioner,
     WlSurface* surface)
-    : wayland::XdgPopup(new_resource),
+    : wayland::XdgPopup(new_resource, Version<1>()),
       WindowWlSurfaceRole(
           &xdg_surface->xdg_shell.seat,
-          wayland::XdgPopup::client,
+          mw::XdgPopup::client,
           surface,
           xdg_surface->xdg_shell.shell,
           xdg_surface->xdg_shell.output_manager),
@@ -319,7 +302,13 @@ mf::XdgPopupStable::XdgPopupStable(
 
     specification->type = mir_window_type_freestyle;
     specification->placement_hints = mir_placement_hints_slide_any;
-    specification->parent_id = parent_role->surface_id();
+    if (parent_role)
+    {
+        if (auto scene_surface = parent_role.value()->scene_surface())
+        {
+            specification->parent = scene_surface.value();
+        }
+    }
 
     apply_spec(*specification);
 }
@@ -355,10 +344,23 @@ void mf::XdgPopupStable::handle_resize(const std::experimental::optional<geometr
     }
 }
 
+void mf::XdgPopupStable::handle_close_request()
+{
+    send_popup_done_event();
+}
+
+auto mf::XdgPopupStable::from(wl_resource* resource) -> XdgPopupStable*
+{
+    auto popup = dynamic_cast<XdgPopupStable*>(wayland::XdgPopup::from(resource));
+    if (!popup)
+        BOOST_THROW_EXCEPTION(std::runtime_error("Invalid resource given to XdgPopupStable::from()"));
+    return popup;
+}
+
 // XdgToplevelStable
 
 mf::XdgToplevelStable::XdgToplevelStable(wl_resource* new_resource, XdgSurfaceStable* xdg_surface, WlSurface* surface)
-    : wayland::XdgToplevel(new_resource),
+    : mw::XdgToplevel(new_resource, Version<1>()),
       WindowWlSurfaceRole(
           &xdg_surface->xdg_shell.seat,
           wayland::XdgToplevel::client,
@@ -383,7 +385,7 @@ void mf::XdgToplevelStable::set_parent(std::experimental::optional<struct wl_res
 {
     if (parent && parent.value())
     {
-        WindowWlSurfaceRole::set_parent(XdgToplevelStable::from(parent.value())->surface_id());
+        WindowWlSurfaceRole::set_parent(XdgToplevelStable::from(parent.value())->scene_surface());
     }
     else
     {
@@ -396,10 +398,9 @@ void mf::XdgToplevelStable::set_title(std::string const& title)
     WindowWlSurfaceRole::set_title(title);
 }
 
-void mf::XdgToplevelStable::set_app_id(std::string const& /*app_id*/)
+void mf::XdgToplevelStable::set_app_id(std::string const& app_id)
 {
-    // Logically this sets the session name, but Mir doesn't allow this (currently) and
-    // allowing e.g. "session_for_client(client)->name(app_id);" would break the libmirserver ABI
+    WindowWlSurfaceRole::set_application_id(app_id);
 }
 
 void mf::XdgToplevelStable::show_window_menu(struct wl_resource* seat, uint32_t serial, int32_t x, int32_t y)
@@ -499,21 +500,26 @@ void mf::XdgToplevelStable::set_minimized()
 
 void mf::XdgToplevelStable::handle_state_change(MirWindowState /*new_state*/)
 {
-    send_configure(std::experimental::nullopt);
+    send_toplevel_configure();
 }
 
 void mf::XdgToplevelStable::handle_active_change(bool /*is_now_active*/)
 {
-    send_configure(std::experimental::nullopt);
+    send_toplevel_configure();
 }
 
 void mf::XdgToplevelStable::handle_resize(std::experimental::optional<geometry::Point> const& /*new_top_left*/,
-                                          geometry::Size const& new_size)
+                                          geometry::Size const& /*new_size*/)
 {
-    send_configure(new_size);
+    send_toplevel_configure();
 }
 
-void mf::XdgToplevelStable::send_configure(std::experimental::optional<geometry::Size> new_size)
+void mf::XdgToplevelStable::handle_close_request()
+{
+    send_close_event();
+}
+
+void mf::XdgToplevelStable::send_toplevel_configure()
 {
     wl_array states;
     wl_array_init(&states);
@@ -542,9 +548,8 @@ void mf::XdgToplevelStable::send_configure(std::experimental::optional<geometry:
         break;
     }
 
-    geom::Size size = new_size.value_or(
-        requested_window_size().value_or(
-            geom::Size{})); // 0 size values means default for toplevel comfigure
+    // 0 sizes means default for toplevel configure
+    geom::Size size = requested_window_size().value_or(geom::Size{0, 0});
 
     send_configure_event(size.width.as_int(), size.height.as_int(), &states);
     wl_array_release(&states);
@@ -561,7 +566,7 @@ mf::XdgToplevelStable* mf::XdgToplevelStable::from(wl_resource* surface)
 // XdgPositionerStable
 
 mf::XdgPositionerStable::XdgPositionerStable(wl_resource* new_resource)
-    : wayland::XdgPositioner(new_resource)
+    : mw::XdgPositioner(new_resource, Version<1>())
 {
     // specifying gravity is not required by the xdg shell protocol, but is by Mir window managers
     surface_placement_gravity = mir_placement_gravity_center;
@@ -686,7 +691,7 @@ void mf::XdgPositionerStable::set_offset(int32_t x, int32_t y)
     aux_rect_placement_offset_y = y;
 }
 
-auto mf::XdgShellStable::get_window(wl_resource* surface) -> std::shared_ptr<Surface>
+auto mf::XdgShellStable::get_window(wl_resource* surface) -> std::shared_ptr<scene::Surface>
 {
     namespace mw = mir::wayland;
 
@@ -695,11 +700,9 @@ auto mf::XdgShellStable::get_window(wl_resource* surface) -> std::shared_ptr<Sur
         auto const xdgsurface = XdgSurfaceStable::from(surface);
         if (auto const role = xdgsurface->window_role())
         {
-            auto const id = role.value()->surface_id();
-            if (id.as_value())
+            if (auto const scene_surface = role.value()->scene_surface())
             {
-                auto const session = get_session(xdgsurface->client);
-                return session->get_surface(id);
+                return scene_surface.value();
             }
         }
 

@@ -25,16 +25,19 @@
 #include "mir/frontend/shell.h"
 #include "mir/scene/surface_creation_parameters.h"
 
-#include "wl_surface_event_sink.h"
+#include "wayland_surface_observer.h"
 #include "wayland_utils.h"
 
 namespace mf = mir::frontend;
+namespace ms = mir::scene;
+namespace msh = mir::shell;
 
-mf::XWaylandWMShellSurface::XWaylandWMShellSurface(wl_client* client,
-                                                   WlSurface* surface,
-                                                   std::shared_ptr<mf::Shell> const& shell,
-                                                   WlSeat& seat,
-                                                   OutputManager* const output_manager)
+mf::XWaylandWMShellSurface::XWaylandWMShellSurface(
+    wl_client* client,
+    WlSurface* surface,
+    std::shared_ptr<msh::Shell> const& shell,
+    WlSeat& seat,
+    OutputManager* const output_manager)
     : WindowWlSurfaceRole{&seat, client, surface, shell, output_manager}
 {
 //    params->type = mir_window_type_normal;
@@ -73,6 +76,11 @@ void mf::XWaylandWMShellSurface::handle_resize(std::experimental::optional<geome
     mir::log_verbose("handle resize");
     if (surface != NULL)
       surface->send_resize(new_size);
+}
+
+void mf::XWaylandWMShellSurface::handle_close_request()
+{
+    surface->send_close_request();
 }
 
 // This is just a wrapper to avoid needing nullptr to use this method

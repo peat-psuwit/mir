@@ -31,7 +31,7 @@ Height const display_height{480};
 
 Rectangle const display_area{{display_left, display_top}, {display_width, display_height}};
 
-struct RaiseTree : TestWindowManagerTools
+struct RaiseTree : mt::TestWindowManagerTools
 {
     Size const initial_parent_size{600, 400};
     Size const initial_child_size{300, 300};
@@ -42,7 +42,7 @@ struct RaiseTree : TestWindowManagerTools
 
     void SetUp() override
     {
-        basic_window_manager.add_display_for_testing(display_area);
+        notify_configuration_applied(create_fake_display_configuration({display_area}));
 
         mir::scene::SurfaceCreationParameters creation_parameters;
         basic_window_manager.add_session(session);

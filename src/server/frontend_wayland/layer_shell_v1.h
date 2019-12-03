@@ -23,19 +23,32 @@
 
 namespace mir
 {
+namespace scene
+{
+class Surface;
+}
+namespace shell
+{
+class Shell;
+class Surface;
+}
 namespace frontend
 {
-
-class Shell;
 class WlSeat;
 class OutputManager;
 
 class LayerShellV1 : public wayland::LayerShellV1::Global
 {
 public:
-    LayerShellV1(wl_display* display, std::shared_ptr<Shell> const shell, WlSeat& seat, OutputManager* output_manager);
+    LayerShellV1(
+        wl_display* display,
+        std::shared_ptr<shell::Shell> shell,
+        WlSeat& seat,
+        OutputManager* output_manager);
 
-    std::shared_ptr<Shell> const shell;
+    static auto get_window(wl_resource* surface) -> std::shared_ptr<scene::Surface>;
+
+    std::shared_ptr<shell::Shell> const shell;
     WlSeat& seat;
     OutputManager* const output_manager;
 

@@ -512,13 +512,13 @@ class WrapShellGeneratingCloseEvent : public mir::shell::ShellWrapper
 {
     using mir::shell::ShellWrapper::ShellWrapper;
 
-    mir::frontend::SurfaceId create_surface(
+    auto create_surface(
         std::shared_ptr <mir::scene::Session> const& session,
         mir::scene::SurfaceCreationParameters const& params,
-        std::shared_ptr<mir::frontend::EventSink> const& sink) override
+        std::shared_ptr<mir::scene::SurfaceObserver> const& observer) -> std::shared_ptr<mir::scene::Surface> override
     {
-        auto const window = mir::shell::ShellWrapper::create_surface(session, params, sink);
-        session->surface(window)->request_client_surface_close();
+        auto const window = mir::shell::ShellWrapper::create_surface(session, params, observer);
+        window->request_client_surface_close();
         return window;
     }
 };
@@ -681,14 +681,14 @@ struct WrapShellCreatingFixedSizeSurfaces : public mir::shell::ShellWrapper
     {
     }
 
-    mir::frontend::SurfaceId create_surface(
+    auto create_surface(
         std::shared_ptr <mir::scene::Session> const& session,
         mir::scene::SurfaceCreationParameters const& orig_params,
-        std::shared_ptr<mir::frontend::EventSink> const& sink) override
+        std::shared_ptr<mir::scene::SurfaceObserver> const& observer) -> std::shared_ptr<mir::scene::Surface> override
     {
         auto params = orig_params;
         params.size = {surface_width, surface_height};
-        auto const window = mir::shell::ShellWrapper::create_surface(session, params, sink);
+        auto const window = mir::shell::ShellWrapper::create_surface(session, params, observer);
         return window;
     }
 

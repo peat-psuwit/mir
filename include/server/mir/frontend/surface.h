@@ -47,11 +47,12 @@ public:
     virtual ~Surface() = default;
 
     /// Size of the client area of the surface (excluding any decorations)
-    virtual auto client_size() const -> geometry::Size = 0;
+    virtual auto content_size() const -> geometry::Size = 0;
 
     virtual auto primary_buffer_stream() const -> std::shared_ptr<frontend::BufferStream> = 0;
 
     virtual void set_cursor_image(std::shared_ptr<graphics::CursorImage> const& image) = 0;
+    /// \deprecated can be removed along with mirclient
     virtual void set_cursor_stream(
         std::shared_ptr<frontend::BufferStream> const& image,
         geometry::Displacement const& hotspot) = 0;

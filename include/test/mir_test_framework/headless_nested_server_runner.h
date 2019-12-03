@@ -24,15 +24,7 @@
 
 namespace mir_test_framework
 {
-struct PassthroughTracker
-{
-    bool wait_for_passthrough_frames(size_t num_frames, std::chrono::milliseconds ms);
-    void note_passthrough();
-private:
-    std::mutex mutex;
-    std::condition_variable cv;
-    size_t num_passthrough;
-};
+class PassthroughTracker;
 
 class HeadlessNestedServerRunner : public AsyncServerRunner
 {

@@ -103,7 +103,7 @@ void msh::CanonicalWindowManagerPolicy::handle_displays_updated(SessionInfoMap& 
         if (auto const surface = weak_surface.lock())
         {
             auto const& info = tools->info_for(weak_surface);
-            Rectangle rect{surface->top_left(), surface->size()};
+            Rectangle rect{surface->top_left(), surface->window_size()};
 
             display_layout->place_in_output(info.output_id.value(), rect);
             surface->move_to(rect.top_left);
@@ -164,7 +164,7 @@ auto msh::CanonicalWindowManagerPolicy::handle_place_new_surface(
 
             parameters.top_left = default_surface->top_left() + offset;
 
-            geometry::Rectangle display_for_app{default_surface->top_left(), default_surface->size()};
+            geometry::Rectangle display_for_app{default_surface->top_left(), default_surface->window_size()};
             display_layout->size_to_output(display_for_app);
 
 //            // TODO This is what is currently in the spec, but I think it's wrong
@@ -228,8 +228,8 @@ auto msh::CanonicalWindowManagerPolicy::handle_place_new_surface(
         //        it to extend into shell space.
         auto const parent_top_left = parent->top_left();
         auto const centred = parent_top_left
-             + 0.5*(as_displacement(parent->size()) - as_displacement(parameters.size))
-             - DeltaY{(parent->size().height.as_int()-height)/6};
+             + 0.5*(as_displacement(parent->window_size()) - as_displacement(parameters.size))
+             - DeltaY{(parent->window_size().height.as_int()-height)/6};
 
         parameters.top_left = centred;
         positioned = true;
@@ -370,7 +370,7 @@ void msh::CanonicalWindowManagerPolicy::handle_modify_surface(
 
     if (modifications.width.is_set() || modifications.height.is_set())
     {
-        auto new_size = surface->size();
+        auto new_size = surface->window_size();
 
         if (modifications.width.is_set())
             new_size.width = modifications.width.value();
@@ -413,10 +413,11 @@ void msh::CanonicalWindowManagerPolicy::handle_modify_surface(
     }
 }
 
-void msh::CanonicalWindowManagerPolicy::handle_delete_surface(std::shared_ptr<ms::Session> const& session, std::weak_ptr<ms::Surface> const& surface)
+void msh::CanonicalWindowManagerPolicy::handle_delete_surface(std::shared_ptr<ms::Session> const& session, std::weak_ptr<ms::Surface> const& weak_surface)
 {
-    fullscreen_surfaces.erase(surface);
-    bool const is_active_surface{surface.lock() == active_surface()};
+    fullscreen_surfaces.erase(weak_surface);
+    auto const surface = weak_surface.lock();
+    bool const is_active_surface{surface == active_surface()};
 
     auto& info = tools->info_for(surface);
 
@@ -426,7 +427,7 @@ void msh::CanonicalWindowManagerPolicy::handle_delete_surface(std::shared_ptr<ms
 
         for (auto i = begin(siblings); i != end(siblings); ++i)
         {
-            if (surface.lock() == i->lock())
+            if (surface == i->lock())
             {
                 siblings.erase(i);
                 break;
@@ -440,7 +441,7 @@ void msh::CanonicalWindowManagerPolicy::handle_delete_surface(std::shared_ptr<ms
 
     for (auto i = begin(surfaces); i != end(surfaces); ++i)
     {
-        if (surface.lock() == i->lock())
+        if (surface == i->lock())
         {
             surfaces.erase(i);
             break;
@@ -484,7 +485,7 @@ int msh::CanonicalWindowManagerPolicy::handle_set_state(std::shared_ptr<ms::Surf
 
     if (info.state == mir_window_state_restored)
     {
-        info.restore_rect = {surface->top_left(), surface->size()};
+        info.restore_rect = {surface->top_left(), surface->window_size()};
     }
 
     if (info.state != mir_window_state_fullscreen)
@@ -529,7 +530,7 @@ int msh::CanonicalWindowManagerPolicy::handle_set_state(std::shared_ptr<ms::Surf
 
     case mir_window_state_fullscreen:
     {
-        Rectangle rect{old_pos, surface->size()};
+        Rectangle rect{old_pos, surface->window_size()};
 
         if (info.output_id.is_set())
         {
@@ -826,7 +827,7 @@ bool msh::CanonicalWindowManagerPolicy::resize(std::shared_ptr<ms::Surface> cons
     auto const& surface_info = tools->info_for(surface);
 
     auto const top_left = surface->top_left();
-    Rectangle const old_pos{top_left, surface->size()};
+    Rectangle const old_pos{top_left, surface->window_size()};
 
     if (!resizing)
     {

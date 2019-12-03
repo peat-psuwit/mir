@@ -75,12 +75,12 @@ struct MockCallback
 
 struct MockSceneObserver : public ms::Observer
 {
-    MOCK_METHOD1(surface_added, void(ms::Surface*));
-    MOCK_METHOD1(surface_removed, void(ms::Surface*));
+    MOCK_METHOD1(surface_added, void(std::shared_ptr<ms::Surface> const&));
+    MOCK_METHOD1(surface_removed, void(std::shared_ptr<ms::Surface> const&));
     MOCK_METHOD0(surfaces_reordered, void());
     MOCK_METHOD0(scene_changed, void());
 
-    MOCK_METHOD1(surface_exists, void(ms::Surface*));
+    MOCK_METHOD1(surface_exists, void(std::shared_ptr<ms::Surface> const&));
     MOCK_METHOD0(end_observation, void());
 };
 
@@ -92,6 +92,7 @@ struct SurfaceStack : public ::testing::Test
         default_params = ms::a_surface().of_size(geom::Size{geom::Width{1024}, geom::Height{768}});
 
         stub_surface1 = std::make_shared<ms::BasicSurface>(
+            nullptr /* session */,
             std::string("stub"),
             geom::Rectangle{{},{}},
             mir_pointer_unconfined,
@@ -100,6 +101,7 @@ struct SurfaceStack : public ::testing::Test
             report);
 
         stub_surface2 = std::make_shared<ms::BasicSurface>(
+            nullptr /* session */,
             std::string("stub"),
             geom::Rectangle{{},{}},
             mir_pointer_unconfined,
@@ -109,6 +111,7 @@ struct SurfaceStack : public ::testing::Test
 
         
         stub_surface3 = std::make_shared<ms::BasicSurface>(
+            nullptr /* session */,
             std::string("stub"),
             geom::Rectangle{{},{}},
             mir_pointer_unconfined,
@@ -118,13 +121,14 @@ struct SurfaceStack : public ::testing::Test
 
         
         invisible_stub_surface = std::make_shared<ms::BasicSurface>(
+            nullptr /* session */,
             std::string("stub"),
             geom::Rectangle{{},{}},
             mir_pointer_unconfined,
             std::list<ms::StreamInfo> { { std::make_shared<mtd::StubBufferStream>(), {}, {} } },
             std::shared_ptr<mg::CursorImage>(),
             report);
-        invisible_stub_surface->set_hidden(true);
+        invisible_stub_surface->hide();
     }
 
     ms::SurfaceCreationParameters default_params;
@@ -132,10 +136,10 @@ struct SurfaceStack : public ::testing::Test
     std::shared_ptr<mc::BufferStream> stub_buffer_stream2 = std::make_shared<mtd::StubBufferStream>();
     std::shared_ptr<mc::BufferStream> stub_buffer_stream3 = std::make_shared<mtd::StubBufferStream>();
 
-    std::shared_ptr<ms::BasicSurface> stub_surface1;
-    std::shared_ptr<ms::BasicSurface> stub_surface2;
-    std::shared_ptr<ms::BasicSurface> stub_surface3;
-    std::shared_ptr<ms::BasicSurface> invisible_stub_surface;
+    std::shared_ptr<ms::Surface> stub_surface1;
+    std::shared_ptr<ms::Surface> stub_surface2;
+    std::shared_ptr<ms::Surface> stub_surface3;
+    std::shared_ptr<ms::Surface> invisible_stub_surface;
 
     std::shared_ptr<ms::SceneReport> const report = mr::null_scene_report();
     ms::SurfaceStack stack{report};
@@ -234,6 +238,7 @@ TEST_F(SurfaceStack, scene_counts_pending_accurately)
     auto stream = std::make_shared<mc::Stream>(geom::Size{ 1, 1 }, mir_pixel_format_abgr_8888);
 
     auto surface = std::make_shared<ms::BasicSurface>(
+        nullptr /* session */,
         std::string("stub"),
         geom::Rectangle{{},{}},
         mir_pointer_unconfined,
@@ -267,6 +272,7 @@ TEST_F(SurfaceStack, scene_doesnt_count_pending_frames_from_occluded_surfaces)
     stack.register_compositor(this);
     auto stream = std::make_shared<mtd::StubBufferStream>();
     auto surface = std::make_shared<ms::BasicSurface>(
+        nullptr /* session */,
         std::string("stub"),
         geom::Rectangle{{},{}},
         mir_pointer_unconfined,
@@ -299,6 +305,7 @@ TEST_F(SurfaceStack, scene_doesnt_count_pending_frames_from_partially_exposed_su
     stack.register_compositor(comp2);
     auto stream = std::make_shared<mtd::StubBufferStream>();
     auto surface = std::make_shared<ms::BasicSurface>(
+        nullptr /* session */,
         std::string("stub"),
         geom::Rectangle{{},{}},
         mir_pointer_unconfined,
@@ -411,6 +418,7 @@ TEST_F(SurfaceStack, generate_elementelements)
     for(auto i = 0u; i < num_surfaces; i++)
     {
         auto const surface = std::make_shared<ms::BasicSurface>(
+            nullptr /* session */,
             std::string("stub"),
             geom::Rectangle{geom::Point{3 * i, 4 * i},geom::Size{1 * i, 2 * i}},
             mir_pointer_unconfined,
@@ -443,8 +451,8 @@ TEST_F(SurfaceStack, scene_observer_notified_of_add_and_remove)
     MockSceneObserver observer;
 
     InSequence seq;
-    EXPECT_CALL(observer, surface_added(stub_surface1.get())).Times(1);
-    EXPECT_CALL(observer, surface_removed(stub_surface1.get()))
+    EXPECT_CALL(observer, surface_added(stub_surface1)).Times(1);
+    EXPECT_CALL(observer, surface_removed(stub_surface1))
         .Times(1);
 
     stack.add_observer(mt::fake_shared(observer));
@@ -460,8 +468,8 @@ TEST_F(SurfaceStack, multiple_observers)
     MockSceneObserver observer1, observer2;
 
     InSequence seq;
-    EXPECT_CALL(observer1, surface_added(stub_surface1.get())).Times(1);
-    EXPECT_CALL(observer2, surface_added(stub_surface1.get())).Times(1);
+    EXPECT_CALL(observer1, surface_added(stub_surface1)).Times(1);
+    EXPECT_CALL(observer2, surface_added(stub_surface1)).Times(1);
 
     stack.add_observer(mt::fake_shared(observer1));
     stack.add_observer(mt::fake_shared(observer2));
@@ -476,11 +484,11 @@ TEST_F(SurfaceStack, remove_scene_observer)
     MockSceneObserver observer;
 
     InSequence seq;
-    EXPECT_CALL(observer, surface_added(stub_surface1.get())).Times(1);
+    EXPECT_CALL(observer, surface_added(stub_surface1)).Times(1);
     // We remove the scene observer before removing the surface, and thus
     // expect to NOT see the surface_removed call
     EXPECT_CALL(observer, end_observation()).Times(1);
-    EXPECT_CALL(observer, surface_removed(stub_surface1.get()))
+    EXPECT_CALL(observer, surface_removed(stub_surface1))
         .Times(0);
 
     stack.add_observer(mt::fake_shared(observer));
@@ -501,8 +509,8 @@ TEST_F(SurfaceStack, scene_observer_informed_of_existing_surfaces)
     MockSceneObserver observer;
 
     InSequence seq;
-    EXPECT_CALL(observer, surface_exists(stub_surface1.get())).Times(1);
-    EXPECT_CALL(observer, surface_exists(stub_surface2.get())).Times(1);
+    EXPECT_CALL(observer, surface_exists(stub_surface1)).Times(1);
+    EXPECT_CALL(observer, surface_exists(stub_surface2)).Times(1);
 
     stack.add_surface(stub_surface1, default_params.input_mode);
     stack.add_surface(stub_surface2, default_params.input_mode);
@@ -521,7 +529,7 @@ TEST_F(SurfaceStack, scene_observer_can_query_scene_within_surface_exists_notifi
             EXPECT_THAT(surface.get(), Eq(stub_surface1.get()));
         });
     };
-    EXPECT_CALL(observer, surface_exists(stub_surface1.get())).Times(1)
+    EXPECT_CALL(observer, surface_exists(stub_surface1)).Times(1)
         .WillOnce(InvokeWithoutArgs(scene_query));
 
     stack.add_surface(stub_surface1, default_params.input_mode);
@@ -544,7 +552,7 @@ TEST_F(SurfaceStack, scene_observer_can_async_query_scene_within_surface_exists_
         std::async(std::launch::async, scene_query);
     };
 
-    EXPECT_CALL(observer, surface_exists(stub_surface1.get())).Times(1)
+    EXPECT_CALL(observer, surface_exists(stub_surface1)).Times(1)
         .WillOnce(InvokeWithoutArgs(async_scene_query));
 
     stack.add_surface(stub_surface1, default_params.input_mode);
@@ -561,7 +569,7 @@ TEST_F(SurfaceStack, scene_observer_can_remove_surface_from_scene_within_surface
     auto const surface_removal = [&]{
         stack.remove_surface(stub_surface1);
     };
-    EXPECT_CALL(observer, surface_exists(stub_surface1.get())).Times(1)
+    EXPECT_CALL(observer, surface_exists(stub_surface1)).Times(1)
         .WillOnce(InvokeWithoutArgs(surface_removal));
 
     stack.add_surface(stub_surface1, default_params.input_mode);
@@ -594,6 +602,7 @@ TEST_F(SurfaceStack, scene_elements_hold_snapshot_of_positioning_info)
     for(auto i = 0u; i < num_surfaces; i++)
     {
         auto const surface = std::make_shared<ms::BasicSurface>(
+            nullptr /* session */,
             std::string("stub"),
             geom::Rectangle{geom::Point{3 * i, 4 * i},geom::Size{1 * i, 2 * i}},
             mir_pointer_unconfined,
@@ -625,6 +634,7 @@ TEST_F(SurfaceStack, generates_scene_elements_that_delay_buffer_acquisition)
         .Times(0);
 
     auto const surface = std::make_shared<ms::BasicSurface>(
+        nullptr /* session */,
         std::string("stub"),
         geom::Rectangle{geom::Point{3, 4},geom::Size{1, 2}},
         mir_pointer_unconfined,
@@ -653,6 +663,7 @@ TEST_F(SurfaceStack, generates_scene_elements_that_allow_only_one_buffer_acquisi
         .WillOnce(Return(std::make_shared<mtd::StubBuffer>()));
 
     auto const surface = std::make_shared<ms::BasicSurface>(
+        nullptr /* session */,
         std::string("stub"),
         geom::Rectangle{geom::Point{3, 4},geom::Size{1, 2}},
         mir_pointer_unconfined,
@@ -674,6 +685,7 @@ struct MockConfigureSurface : public ms::BasicSurface
 {
     MockConfigureSurface() :
         ms::BasicSurface(
+            {},
             {},
             {{},{}},
             mir_pointer_unconfined,
@@ -785,7 +797,7 @@ TEST_F(SurfaceStack, observer_can_trigger_state_change_within_notification)
         std::async(std::launch::async, state_changer);
     };
 
-    EXPECT_CALL(observer, surface_added(stub_surface1.get())).Times(3)
+    EXPECT_CALL(observer, surface_added(stub_surface1)).Times(3)
         .WillOnce(InvokeWithoutArgs(state_changer))
         .WillOnce(InvokeWithoutArgs(async_state_changer))
         .WillOnce(Return());
@@ -809,11 +821,11 @@ TEST_F(SurfaceStack, observer_can_remove_itself_within_notification)
 
     //Both of these observers should still get their notifications
     //regardless of the removal of observer2
-    EXPECT_CALL(observer1, surface_added(stub_surface1.get())).Times(2);
-    EXPECT_CALL(observer3, surface_added(stub_surface1.get())).Times(2);
+    EXPECT_CALL(observer1, surface_added(stub_surface1)).Times(2);
+    EXPECT_CALL(observer3, surface_added(stub_surface1)).Times(2);
 
     InSequence seq;
-    EXPECT_CALL(observer2, surface_added(stub_surface1.get())).Times(1)
+    EXPECT_CALL(observer2, surface_added(stub_surface1)).Times(1)
          .WillOnce(InvokeWithoutArgs(remove_observer));
     EXPECT_CALL(observer2, end_observation()).Times(1);
 
@@ -1026,4 +1038,193 @@ TEST_F(SurfaceStack, raise_surfaces_to_top)
             SceneElementForStream(stub_buffer_stream1),
             SceneElementForStream(stub_buffer_stream2),
             SceneElementForStream(stub_buffer_stream3)));
+}
+
+TEST_F(SurfaceStack, new_surface_is_placed_under_old_according_to_depth_layer)
+{
+    stub_surface1->set_depth_layer(mir_depth_layer_application);
+    stub_surface2->set_depth_layer(mir_depth_layer_below);
+
+    stack.add_surface(stub_surface1, default_params.input_mode);
+    stack.add_surface(stub_surface2, default_params.input_mode);
+
+    EXPECT_THAT(
+        stack.scene_elements_for(compositor_id),
+        ElementsAre(
+            SceneElementForStream(stub_buffer_stream2),
+            SceneElementForStream(stub_buffer_stream1)));
+}
+
+TEST_F(SurfaceStack, raise_does_not_reorder_surfaces_when_depth_layers_are_different)
+{
+    stub_surface1->set_depth_layer(mir_depth_layer_below);
+    stub_surface2->set_depth_layer(mir_depth_layer_application);
+    stub_surface3->set_depth_layer(mir_depth_layer_above);
+
+    stack.add_surface(stub_surface1, default_params.input_mode);
+    stack.add_surface(stub_surface2, default_params.input_mode);
+    stack.add_surface(stub_surface3, default_params.input_mode);
+
+    NiceMock<MockSceneObserver> observer;
+    stack.add_observer(mt::fake_shared(observer));
+
+    EXPECT_CALL(observer, surfaces_reordered()).Times(0);
+
+    stack.raise({stub_surface1, stub_surface3});
+    EXPECT_THAT(
+        stack.scene_elements_for(compositor_id),
+        ElementsAre(
+            SceneElementForStream(stub_buffer_stream1),
+            SceneElementForStream(stub_buffer_stream2),
+            SceneElementForStream(stub_buffer_stream3)));
+}
+
+TEST_F(SurfaceStack, changing_depth_layer_causes_reorder)
+{
+    NiceMock<MockSceneObserver> observer;
+    stack.add_observer(mt::fake_shared(observer));
+
+    EXPECT_CALL(observer, surfaces_reordered()).Times(0);
+
+    stack.add_surface(stub_surface1, default_params.input_mode);
+    stack.add_surface(stub_surface2, default_params.input_mode);
+
+    EXPECT_THAT(
+        stack.scene_elements_for(compositor_id),
+        ElementsAre(
+            SceneElementForStream(stub_buffer_stream1),
+            SceneElementForStream(stub_buffer_stream2)));
+
+    Mock::VerifyAndClearExpectations(&observer);
+    EXPECT_CALL(observer, surfaces_reordered()).Times(1);
+
+    stub_surface1->set_depth_layer(mir_depth_layer_above);
+
+    EXPECT_THAT(
+        stack.scene_elements_for(compositor_id),
+        ElementsAre(
+            SceneElementForStream(stub_buffer_stream2),
+            SceneElementForStream(stub_buffer_stream1)));
+}
+
+TEST_F(SurfaceStack, changing_depth_layer_does_not_cause_reorder_when_it_shouldnt)
+{
+    stack.add_surface(stub_surface1, default_params.input_mode);
+    stack.add_surface(stub_surface2, default_params.input_mode);
+
+    EXPECT_THAT(
+        stack.scene_elements_for(compositor_id),
+        ElementsAre(
+            SceneElementForStream(stub_buffer_stream1),
+            SceneElementForStream(stub_buffer_stream2)));
+
+    stub_surface1->set_depth_layer(mir_depth_layer_below);
+
+    EXPECT_THAT(
+        stack.scene_elements_for(compositor_id),
+        ElementsAre(
+            SceneElementForStream(stub_buffer_stream1),
+            SceneElementForStream(stub_buffer_stream2)));
+}
+
+TEST_F(SurfaceStack, raising_surface_set_respects_depth_layers)
+{
+    stub_surface1->set_depth_layer(mir_depth_layer_application);
+    stub_surface2->set_depth_layer(mir_depth_layer_above);
+    stub_surface3->set_depth_layer(mir_depth_layer_above);
+
+    stack.add_surface(stub_surface1, default_params.input_mode);
+    stack.add_surface(stub_surface2, default_params.input_mode);
+    stack.add_surface(stub_surface3, default_params.input_mode);
+
+    EXPECT_THAT(
+        stack.scene_elements_for(compositor_id),
+        ElementsAre(
+            SceneElementForStream(stub_buffer_stream1),
+            SceneElementForStream(stub_buffer_stream2),
+            SceneElementForStream(stub_buffer_stream3)));
+
+    NiceMock<MockSceneObserver> observer;
+    stack.add_observer(mt::fake_shared(observer));
+
+    EXPECT_CALL(observer, surfaces_reordered()).Times(1);
+
+    stack.raise({stub_surface1, stub_surface2});
+
+    EXPECT_THAT(
+        stack.scene_elements_for(compositor_id),
+        ElementsAre(
+            SceneElementForStream(stub_buffer_stream1),
+            SceneElementForStream(stub_buffer_stream3),
+            SceneElementForStream(stub_buffer_stream2)));
+}
+
+TEST_F(SurfaceStack, all_depth_layers_are_handled)
+{
+    std::vector<MirDepthLayer> depth_layers_in_order{
+        mir_depth_layer_background,
+        mir_depth_layer_below,
+        mir_depth_layer_application,
+        mir_depth_layer_always_on_top,
+        mir_depth_layer_above,
+        mir_depth_layer_overlay,
+    };
+
+    std::vector<std::string> depth_layer_names;
+
+    for (auto layer : depth_layers_in_order)
+    {
+        switch (layer)
+        {
+        case mir_depth_layer_background:
+            depth_layer_names.push_back("mir_depth_layer_background");
+            break;
+        case mir_depth_layer_below:
+            depth_layer_names.push_back("mir_depth_layer_below");
+            break;
+        case mir_depth_layer_application:
+            depth_layer_names.push_back("mir_depth_layer_application");
+            break;
+        case mir_depth_layer_always_on_top:
+            depth_layer_names.push_back("mir_depth_layer_always_on_top");
+            break;
+        case mir_depth_layer_above:
+            depth_layer_names.push_back("mir_depth_layer_above");
+            break;
+        case mir_depth_layer_overlay:
+            depth_layer_names.push_back("mir_depth_layer_overlay");
+            break;
+        // NOTE: when adding a depth layer, be sure to add it to depth_layers_in_order
+        // (This switch mostly exists for that reminder)
+        }
+    }
+
+    stub_surface1->set_depth_layer(depth_layers_in_order[0]);
+    stub_surface2->set_depth_layer(depth_layers_in_order[0]);
+
+    stack.add_surface(stub_surface1, default_params.input_mode);
+    stack.add_surface(stub_surface2, default_params.input_mode);
+
+    for (auto i = 1u; i < depth_layers_in_order.size(); i++)
+    {
+        stub_surface1->set_depth_layer(depth_layers_in_order[i]);
+        stack.raise(stub_surface2);
+
+        EXPECT_THAT(
+            stack.scene_elements_for(compositor_id),
+            ElementsAre(
+                SceneElementForStream(stub_buffer_stream2),
+                SceneElementForStream(stub_buffer_stream1)))
+            << depth_layer_names[i] << " not kept on top of " << depth_layer_names[i - 1];
+
+        stub_surface2->set_depth_layer(depth_layers_in_order[i]);
+
+        EXPECT_THAT(
+            stack.scene_elements_for(compositor_id),
+            ElementsAre(
+                SceneElementForStream(stub_buffer_stream1),
+                SceneElementForStream(stub_buffer_stream2)))
+            << "A surface at " << depth_layer_names[i] << " could not be raised over another on the same layer";
+    }
+
 }

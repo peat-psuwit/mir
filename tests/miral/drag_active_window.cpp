@@ -34,7 +34,7 @@ Height const display_height{480};
 Rectangle const display_area{{display_left,  display_top},
                              {display_width, display_height}};
 
-struct DragActiveWindow : TestWindowManagerTools, WithParamInterface<MirWindowType>
+struct DragActiveWindow : mt::TestWindowManagerTools, WithParamInterface<MirWindowType>
 {
     Size const initial_parent_size{600, 400};
 
@@ -42,7 +42,7 @@ struct DragActiveWindow : TestWindowManagerTools, WithParamInterface<MirWindowTy
 
     void SetUp() override
     {
-        basic_window_manager.add_display_for_testing(display_area);
+        notify_configuration_applied(create_fake_display_configuration({display_area}));
         basic_window_manager.add_session(session);
     }
 

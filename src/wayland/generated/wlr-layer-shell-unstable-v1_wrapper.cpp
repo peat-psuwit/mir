@@ -14,26 +14,6 @@
 
 #include "mir/log.h"
 
-namespace
-{
-void internal_error_processing_request(struct wl_client* client, std::string const& method_name)
-{
-#if (WAYLAND_VERSION_MAJOR > 1 || (WAYLAND_VERSION_MAJOR == 1 && WAYLAND_VERSION_MINOR > 16))
-    wl_client_post_implementation_error(
-        client,
-        "Mir internal error processing %s request",
-        method_name.c_str());
-#else
-    wl_client_post_no_memory(client);
-#endif
-    ::mir::log(
-        ::mir::logging::Severity::error,
-        "frontend:Wayland",
-        std::current_exception(),
-        "Exception processing " + method_name + " request");
-}
-}
-
 namespace mir
 {
 namespace wayland
@@ -68,6 +48,8 @@ mw::LayerShellV1* mw::LayerShellV1::from(struct wl_resource* resource)
 
 struct mw::LayerShellV1::Thunks
 {
+    static int const supported_version;
+
     static void get_layer_surface_thunk(struct wl_client* client, struct wl_resource* resource, uint32_t id, struct wl_resource* surface, struct wl_resource* output, uint32_t layer, char const* namespace_)
     {
         auto me = static_cast<LayerShellV1*>(wl_resource_get_user_data(resource));
@@ -104,7 +86,7 @@ struct mw::LayerShellV1::Thunks
         auto resource = wl_resource_create(
             client,
             &zwlr_layer_shell_v1_interface_data,
-            std::min(version, me->max_version),
+            std::min((int)version, Thunks::supported_version),
             id);
         if (resource == nullptr)
         {
@@ -126,7 +108,9 @@ struct mw::LayerShellV1::Thunks
     static void const* request_vtable[];
 };
 
-mw::LayerShellV1::LayerShellV1(struct wl_resource* resource)
+int const mw::LayerShellV1::Thunks::supported_version = 1;
+
+mw::LayerShellV1::LayerShellV1(struct wl_resource* resource, Version<1>)
     : client{wl_resource_get_client(resource)},
       resource{resource}
 {
@@ -147,24 +131,19 @@ void mw::LayerShellV1::destroy_wayland_object() const
     wl_resource_destroy(resource);
 }
 
-mw::LayerShellV1::Global::Global(wl_display* display, uint32_t max_version)
-    : global{wl_global_create(
-        display,
-        &zwlr_layer_shell_v1_interface_data,
-        max_version,
-        this,
-        &Thunks::bind_thunk)},
-      max_version{max_version}
-{
-    if (global == nullptr)
-    {
-        BOOST_THROW_EXCEPTION((std::runtime_error{"Failed to export zwlr_layer_shell_v1 interface"}));
-    }
-}
+mw::LayerShellV1::Global::Global(wl_display* display, Version<1>)
+    : wayland::Global{
+          wl_global_create(
+              display,
+              &zwlr_layer_shell_v1_interface_data,
+              Thunks::supported_version,
+              this,
+              &Thunks::bind_thunk)}
+{}
 
-mw::LayerShellV1::Global::~Global()
+auto mw::LayerShellV1::Global::interface_name() const -> char const*
 {
-    wl_global_destroy(global);
+    return LayerShellV1::interface_name;
 }
 
 struct wl_interface const* mw::LayerShellV1::Thunks::get_layer_surface_types[] {
@@ -189,6 +168,8 @@ mw::LayerSurfaceV1* mw::LayerSurfaceV1::from(struct wl_resource* resource)
 
 struct mw::LayerSurfaceV1::Thunks
 {
+    static int const supported_version;
+
     static void set_size_thunk(struct wl_client* client, struct wl_resource* resource, uint32_t width, uint32_t height)
     {
         auto me = static_cast<LayerSurfaceV1*>(wl_resource_get_user_data(resource));
@@ -304,7 +285,9 @@ struct mw::LayerSurfaceV1::Thunks
     static void const* request_vtable[];
 };
 
-mw::LayerSurfaceV1::LayerSurfaceV1(struct wl_resource* resource)
+int const mw::LayerSurfaceV1::Thunks::supported_version = 1;
+
+mw::LayerSurfaceV1::LayerSurfaceV1(struct wl_resource* resource, Version<1>)
     : client{wl_resource_get_client(resource)},
       resource{resource}
 {
@@ -369,13 +352,13 @@ namespace wayland
 
 struct wl_interface const zwlr_layer_shell_v1_interface_data {
     mw::LayerShellV1::interface_name,
-    mw::LayerShellV1::interface_version,
+    mw::LayerShellV1::Thunks::supported_version,
     1, mw::LayerShellV1::Thunks::request_messages,
     0, nullptr};
 
 struct wl_interface const zwlr_layer_surface_v1_interface_data {
     mw::LayerSurfaceV1::interface_name,
-    mw::LayerSurfaceV1::interface_version,
+    mw::LayerSurfaceV1::Thunks::supported_version,
     8, mw::LayerSurfaceV1::Thunks::request_messages,
     2, mw::LayerSurfaceV1::Thunks::event_messages};
 

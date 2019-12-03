@@ -41,7 +41,7 @@ struct DataDevice;
 
 struct DataOffer : mw::DataOffer
 {
-    DataOffer(wl_resource* new_resource, DataSource* source, DataDevice* device);
+    DataOffer(DataSource* source, DataDevice* device);
 
     void accept(uint32_t serial, std::experimental::optional<std::string> const& mime_type) override
     {
@@ -70,7 +70,7 @@ struct DataSource : mw::DataSource
 {
 public:
     DataSource(wl_resource* new_resource, DataDeviceManager* manager)
-        : mw::DataSource{new_resource},
+        : mw::DataSource{new_resource, Version<3>()},
           manager{manager}
     {
     }
@@ -205,7 +205,7 @@ DataSource::~DataSource()
 }
 
 DataDeviceManager::DataDeviceManager(struct wl_display* display) :
-    mf::DataDeviceManager(display, 3),
+    mf::DataDeviceManager(display, Version<3>()),
     current_data_source{nullptr, [](DataSource* ds) { if(ds) ds->send_cancelled(); }}
 {
 }
@@ -216,7 +216,7 @@ DataDeviceManager::~DataDeviceManager()
 }
 
 DataDeviceManager::Instance::Instance(wl_resource* new_resource, ::DataDeviceManager* manager)
-    : mir::wayland::DataDeviceManager(new_resource),
+    : mir::wayland::DataDeviceManager(new_resource, Version<3>()),
       manager{manager}
 {
 }
@@ -263,7 +263,7 @@ void DataDeviceManager::bind(wl_resource* new_resource)
 }
 
 DataDevice::DataDevice(wl_resource* new_resource, DataDeviceManager* manager, mf::WlSeat* seat) :
-    mw::DataDevice(new_resource),
+    mw::DataDevice(new_resource, Version<3>()),
     manager{manager},
     seat{seat}
 {
@@ -288,12 +288,7 @@ void DataDevice::notify_new(DataSource* source)
 
     if (has_focus)
     {
-        wl_resource* new_resource = wl_resource_create(
-            client,
-            &mw::wl_data_offer_interface_data,
-            wl_resource_get_version(resource),
-            0);
-        current_offer = new DataOffer{new_resource, source, this};
+        current_offer = new DataOffer{source, this};
     }
 }
 
@@ -320,17 +315,12 @@ void DataDevice::focus_on(wl_client* focus)
 
     if (has_focus && current_source && !current_offer)
     {
-        wl_resource* new_resource = wl_resource_create(
-            client,
-            &mw::wl_data_offer_interface_data,
-            wl_resource_get_version(resource),
-            0);
-        current_offer = new DataOffer{new_resource, current_source, this};
+        current_offer = new DataOffer{current_source, this};
     }
 }
 
-DataOffer::DataOffer(wl_resource* new_resource, DataSource* source, DataDevice* device) :
-    mw::DataOffer(new_resource),
+DataOffer::DataOffer(DataSource* source, DataDevice* device) :
+    mw::DataOffer(*device),
     source{source}
 {
     source->add_listener(this);

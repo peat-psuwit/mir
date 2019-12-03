@@ -34,7 +34,7 @@ Height const display_height{480};
 Rectangle const display_area{{display_left,  display_top},
                              {display_width, display_height}};
 
-struct DisplayConfiguration : TestWindowManagerTools
+struct DisplayConfiguration : mt::TestWindowManagerTools
 {
     Size const initial_window_size{600, 400};
 
@@ -42,7 +42,7 @@ struct DisplayConfiguration : TestWindowManagerTools
 
     void SetUp() override
     {
-        basic_window_manager.add_display_for_testing(display_area);
+        notify_configuration_applied(create_fake_display_configuration({display_area}));
         basic_window_manager.add_session(session);
     }
 
@@ -80,8 +80,9 @@ TEST_F(DisplayConfiguration, given_fullscreen_windows_reconfiguring_displays_doe
     mods.state() = mir_window_state_fullscreen;
     window_manager_tools.modify_window(window, mods);
 
-    Rectangle const new_display{display_area.top_left+as_displacement({display_width, Height{0}}), display_area.size};
+    Rectangle const new_display{
+        display_area.top_left + Displacement{as_delta(display_width), 0}, display_area.size};
 
-    basic_window_manager.add_display_for_testing(new_display);
+    notify_configuration_applied(create_fake_display_configuration({display_area}));
     basic_window_manager.remove_display(new_display);
 }

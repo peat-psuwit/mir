@@ -30,7 +30,8 @@
 #include "wayland_frontend.tp.h"
 
 #include "mir/graphics/buffer_properties.h"
-#include "mir/frontend/session.h"
+#include "mir/scene/session.h"
+#include "mir/frontend/wayland.h"
 #include "mir/compositor/buffer_stream.h"
 #include "mir/executor.h"
 #include "mir/graphics/wayland_allocator.h"
@@ -38,12 +39,15 @@
 #include "mir/log.h"
 
 #include <algorithm>
+#include <boost/throw_exception.hpp>
 
 namespace mf = mir::frontend;
 namespace geom = mir::geometry;
+namespace mw = mir::wayland;
+namespace msh = mir::shell;
 
 mf::WlSurfaceState::Callback::Callback(wl_resource* new_resource)
-    : wayland::Callback{new_resource},
+    : mw::Callback{new_resource, Version<1>()},
       destroyed{deleted_flag_for_resource(resource)}
 {
 }
@@ -78,10 +82,9 @@ mf::WlSurface::WlSurface(
     wl_resource* new_resource,
     std::shared_ptr<Executor> const& executor,
     std::shared_ptr<graphics::WaylandAllocator> const& allocator)
-    : Surface(new_resource),
-        session{mf::get_session(client)},
-        stream_id{session->create_buffer_stream({{}, mir_pixel_format_invalid, graphics::BufferUsage::undefined})},
-        stream{session->get_buffer_stream(stream_id)},
+    : Surface(new_resource, Version<4>()),
+        session{get_session(client)},
+        stream{session->create_buffer_stream({{}, mir_pixel_format_invalid, graphics::BufferUsage::undefined})},
         allocator{allocator},
         executor{executor},
         null_role{this},
@@ -105,7 +108,7 @@ mf::WlSurface::~WlSurface()
     }
 
     role->destroy();
-    session->destroy_buffer_stream(stream_id);
+    session->destroy_buffer_stream(stream);
 }
 
 bool mf::WlSurface::synchronized() const
@@ -132,19 +135,26 @@ mf::WlSurface::Position mf::WlSurface::transform_point(geom::Point point)
     return {point, this, false};
 }
 
-mf::SurfaceId mf::WlSurface::surface_id() const
+auto mf::WlSurface::scene_surface() const -> std::experimental::optional<std::shared_ptr<scene::Surface>>
 {
-    return role->surface_id();
+    return role->scene_surface();
 }
 
 void mf::WlSurface::set_role(WlSurfaceRole* role_)
 {
+    if (role != &null_role)
+        BOOST_THROW_EXCEPTION(std::runtime_error("Surface already has a role"));
     role = role_;
 }
 
 void mf::WlSurface::clear_role()
 {
     role = &null_role;
+}
+
+void mf::WlSurface::set_pending_offset(std::experimental::optional<geom::Displacement> const& offset)
+{
+    pending.offset = offset;
 }
 
 std::unique_ptr<mf::WlSurface, std::function<void(mf::WlSurface*)>> mf::WlSurface::add_child(WlSubsurface* child)
@@ -176,7 +186,7 @@ void mf::WlSurface::populate_surface_data(std::vector<shell::StreamSpecification
 {
     geometry::Displacement offset = parent_offset + offset_;
 
-    buffer_streams.push_back({stream_id, offset, {}});
+    buffer_streams.push_back(msh::StreamSpecification{stream, offset, {}});
     geom::Rectangle surface_rect = {geom::Point{} + offset, buffer_size_.value_or(geom::Size{})};
     if (input_shape)
     {
@@ -331,6 +341,7 @@ void mf::WlSurface::commit(WlSurfaceState const& state)
             {
                 mir_buffer = WlShmBuffer::mir_buffer_from_wl_buffer(
                     buffer,
+                    executor,
                     std::move(executor_send_frame_callbacks));
                 tracepoint(
                     mir_server_wayland,
@@ -346,7 +357,7 @@ void mf::WlSurface::commit(WlSurfaceState const& state)
                     {
                         executor->spawn(run_unless(
                             destroyed,
-                            [buffer](){ wl_resource_queue_event(buffer, wayland::Buffer::Opcode::release); }));
+                            [buffer](){ wl_resource_post_event(buffer, wayland::Buffer::Opcode::release); }));
                     };
 
                 mir_buffer = allocator->buffer_from_resource(
@@ -381,6 +392,15 @@ void mf::WlSurface::commit(WlSurfaceState const& state)
 
 void mf::WlSurface::commit()
 {
+    if (pending.offset && *pending.offset == offset_)
+        pending.offset = std::experimental::nullopt;
+
+    // The same input shape could be represented by the same rectangles in a different order, or even
+    // different rectangles. We don't check for that, however, because it would only cause an unnecessary
+    // update and not do any real harm. Checking for identical vectors should cover most cases.
+    if (pending.input_shape && *pending.input_shape == input_shape)
+        pending.input_shape = std::experimental::nullopt;
+
     // order is important
     auto const state = std::move(pending);
     pending = WlSurfaceState();
@@ -404,7 +424,10 @@ mf::NullWlSurfaceRole::NullWlSurfaceRole(WlSurface* surface) :
 {
 }
 
-mf::SurfaceId mf::NullWlSurfaceRole::surface_id() const { return {}; }
+auto mf::NullWlSurfaceRole::scene_surface() const -> std::experimental::optional<std::shared_ptr<scene::Surface>>
+{
+    return std::experimental::nullopt;
+}
 void mf::NullWlSurfaceRole::refresh_surface_data_now() {}
 void mf::NullWlSurfaceRole::commit(WlSurfaceState const& state) { surface->commit(state); }
 void mf::NullWlSurfaceRole::visiblity(bool /*visible*/) {}

@@ -86,6 +86,11 @@ public:
         return {position, buffer_->size()};
     }
 
+    std::experimental::optional<geometry::Rectangle> clip_area() const override
+    {
+        return std::experimental::optional<geometry::Rectangle>();
+    }
+
     float alpha() const override
     {
         return 1.0;
@@ -186,7 +191,7 @@ mg::SoftwareCursor::create_renderable_for(CursorImage const& cursor_image, geom:
         BOOST_THROW_EXCEPTION(std::logic_error("zero sized software cursor image is invalid"));
 
     auto new_renderable = std::make_shared<detail::CursorRenderable>(
-        allocator->alloc_buffer({cursor_image.size(), format, mg::BufferUsage::software}),
+        allocator->alloc_software_buffer(cursor_image.size(), format),
         position + hotspot - cursor_image.hotspot());
 
     // TODO: The buffer pixel format may not be argb_8888, leading to

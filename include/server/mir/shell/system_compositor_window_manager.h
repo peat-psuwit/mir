@@ -66,10 +66,12 @@ private:
 
     void remove_session(std::shared_ptr<scene::Session> const& session) override;
 
-    frontend::SurfaceId add_surface(
+    auto add_surface(
         std::shared_ptr<scene::Session> const& session,
         scene::SurfaceCreationParameters const& params,
-        std::function<frontend::SurfaceId(std::shared_ptr<scene::Session> const& session, scene::SurfaceCreationParameters const& params)> const& build) override;
+        std::function<std::shared_ptr<scene::Surface>(
+            std::shared_ptr<scene::Session> const& session,
+            scene::SurfaceCreationParameters const& params)> const& build) -> std::shared_ptr<scene::Surface> override;
 
     void modify_surface(
         std::shared_ptr<scene::Session> const& session,
@@ -121,6 +123,16 @@ private:
 
     std::mutex mutable mutex;
     OutputMap output_map;
+};
+
+/**
+ * Mir's default window manager adds Ctrl-Alt-PgUp/Ctrl-Alt-PgDn for session switching
+ */
+class DefaultWindowManager : public SystemCompositorWindowManager
+{
+public:
+    using SystemCompositorWindowManager::SystemCompositorWindowManager;
+    bool handle_keyboard_event(MirKeyboardEvent const* event) override;
 };
 }
 }

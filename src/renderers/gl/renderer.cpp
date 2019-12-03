@@ -352,6 +352,7 @@ mrg::Renderer::Renderer(graphics::DisplayBuffer& display_buffer)
             {EGL_VENDOR,      "EGL vendor"},
             {EGL_VERSION,     "EGL version"},
             {EGL_CLIENT_APIS, "EGL client APIs"},
+            {EGL_EXTENSIONS,  "EGL extensions"},
         };
         for (auto& s : eglstrings)
         {
@@ -366,6 +367,7 @@ mrg::Renderer::Renderer(graphics::DisplayBuffer& display_buffer)
         {GL_RENDERER, "GL renderer"},
         {GL_VERSION,  "GL version"},
         {GL_SHADING_LANGUAGE_VERSION,  "GLSL version"},
+        {GL_EXTENSIONS, "GL extensions"},
     };
 
     for (auto& s : glstrings)
@@ -431,18 +433,38 @@ void mrg::Renderer::render(mg::RenderableList const& renderables) const
 
 void mrg::Renderer::draw(mg::Renderable const& renderable) const
 {
+    auto const clip_area = renderable.clip_area();
+    if (clip_area)
+    {
+        glEnable(GL_SCISSOR_TEST);
+        glScissor(
+            clip_area.value().top_left.x.as_int() -
+                viewport.top_left.x.as_int(),
+            viewport.top_left.y.as_int() +
+                viewport.size.height.as_int() -
+                clip_area.value().top_left.y.as_int() -
+                clip_area.value().size.height.as_int(),
+            clip_area.value().size.width.as_int(), 
+            clip_area.value().size.height.as_int()
+        );
+    }
+
     auto const texture = std::dynamic_pointer_cast<mg::gl::Texture>(renderable.buffer());
     auto const surface_tex =
-        [this, &renderable]() -> std::shared_ptr<mir::gl::Texture>
+        [this, &renderable, need_fallback = !static_cast<bool>(texture)]() -> std::shared_ptr<mir::gl::Texture>
         {
-            try
+            if (need_fallback)
             {
-                return texture_cache->load(renderable);
+                try
+                {
+                    return texture_cache->load(renderable);
+                }
+                catch (std::exception const&)
+                {
+                    report_exception();
+                }
             }
-            catch (std::exception const&)
-            {
-                return {nullptr};
-            }
+            return {nullptr};
         }();
 
     auto const* maybe_prog =
@@ -606,6 +628,10 @@ void mrg::Renderer::draw(mg::Renderable const& renderable) const
 
     glDisableVertexAttribArray(prog.texcoord_attr);
     glDisableVertexAttribArray(prog.position_attr);
+    if (renderable.clip_area())
+    {
+        glDisable(GL_SCISSOR_TEST);
+    }
 }
 
 void mrg::Renderer::set_viewport(geometry::Rectangle const& rect)

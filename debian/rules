@@ -24,6 +24,7 @@ endif
 COMMON_CONFIGURE_OPTIONS = \
   -DCMAKE_INSTALL_LIBEXECDIR="lib/$(DEB_HOST_MULTIARCH)/mir"\
   -DMIR_ENABLE_WLCS_TESTS=OFF \
+  -DMIR_BUILD_INTERPROCESS_TESTS=OFF\
 
 ifeq ($(filter noopt,$(DEB_BUILD_OPTIONS)),noopt)
 	COMMON_CONFIGURE_OPTIONS += -DMIR_LINK_TIME_OPTIMIZATION=OFF
@@ -44,9 +45,9 @@ endif
 $(info COMMON_CONFIGURE_OPTIONS: ${COMMON_CONFIGURE_OPTIONS})
 
 #ifneq ($(filter amd64 i386,$(DEB_HOST_ARCH)),)
-#  AVAILABLE_PLATFORMS=mesa-kms\;mesa-x11\;eglstream-kms
+#  AVAILABLE_PLATFORMS=mesa-kms\;mesa-x11\;wayland\;eglstream-kms
 #else
-	AVAILABLE_PLATFORMS=mesa-kms\;mesa-x11
+	AVAILABLE_PLATFORMS=mesa-kms\;mesa-x11\;wayland
 #endif
 
 override_dh_auto_configure:

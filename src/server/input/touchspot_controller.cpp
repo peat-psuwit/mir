@@ -72,6 +72,11 @@ public:
     {
         return {position, buffer_->size()};
     }
+
+    std::experimental::optional<geometry::Rectangle> clip_area() const override
+    {
+        return std::experimental::optional<geometry::Rectangle>();
+    }
     
     float alpha() const override
     {
@@ -106,7 +111,7 @@ private:
 
 mi::TouchspotController::TouchspotController(std::shared_ptr<mg::GraphicBufferAllocator> const& allocator,
     std::shared_ptr<mi::Scene> const& scene)
-    : touchspot_buffer(allocator->alloc_buffer({touchspot_size, touchspot_pixel_format, mg::BufferUsage::software})),
+    : touchspot_buffer(allocator->alloc_software_buffer(touchspot_size, touchspot_pixel_format)),
       scene(scene),
       enabled(false),
       renderables_in_use(0)

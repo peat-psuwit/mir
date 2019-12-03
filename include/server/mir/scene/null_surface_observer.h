@@ -32,7 +32,8 @@ public:
     virtual ~NullSurfaceObserver() = default;
 
     void attrib_changed(Surface const* surf, MirWindowAttrib attrib, int value) override;
-    void resized_to(Surface const* surf, geometry::Size const& size) override;
+    void window_resized_to(Surface const* surf, geometry::Size const& window_size) override;
+    void content_resized_to(Surface const* surf, geometry::Size const& content_size) override;
     void moved_to(Surface const* surf, geometry::Point const& top_left) override;
     void hidden_set_to(Surface const* surf, bool hide) override;
     void frame_posted(Surface const* surf, int frames_available, geometry::Size const& size) override;
@@ -54,6 +55,8 @@ public:
     void placed_relative(Surface const* surf, geometry::Rectangle const& placement) override;
     void input_consumed(Surface const* surf, MirEvent const* event) override;
     void start_drag_and_drop(Surface const* surf, std::vector<uint8_t> const& handle) override;
+    void depth_layer_set_to(Surface const* surf, MirDepthLayer depth_layer) override;
+    void application_id_set_to(Surface const* surf, std::string const& application_id) override;
 
 protected:
     NullSurfaceObserver(NullSurfaceObserver const&) = delete;

@@ -16,7 +16,7 @@
  * Authored by: Alan Griffiths <alan@octopull.co.uk>
  */
 
-#include "test_server.h"
+#include <miral/test_server.h>
 #include "server_example_decoration.h"
 #include "org_kde_kwin_server_decoration.h"
 
@@ -70,21 +70,10 @@ private:
 
 struct WaylandExtensions : miral::TestServer
 {
-    void SetUp() override
+    WaylandExtensions()
     {
-        testing::Test::SetUp();
+        start_server_in_setup = false;
         add_server_init(launcher);
-    }
-
-    void add_server_init(std::function<void(mir::Server&)>&& init)
-    {
-        auto temp = [old_init=init_server, new_init=init](mir::Server& server)
-            {
-                old_init(server);
-                new_init(server);
-            };
-
-        init_server = temp;
     }
 
     void run_as_client(std::function<void (struct wl_display*)>&& code)
@@ -180,12 +169,16 @@ struct ClientDecorationCreator
         wl_display_roundtrip(display);
         wl_display_roundtrip(display);
 
+        ASSERT_THAT(compositor, NotNull());
+        ASSERT_THAT(decoration_manager, NotNull());
+        ASSERT_THAT(shell, NotNull());
+
         auto const surface = make_scoped(
             wl_compositor_create_surface(compositor),
             &wl_surface_destroy);
         wl_display_roundtrip(display);
 
-        auto  const decoration = make_scoped(
+        auto const decoration = make_scoped(
             org_kde_kwin_server_decoration_manager_create(decoration_manager, surface.get()),
             &org_kde_kwin_server_decoration_release);
         wl_display_roundtrip(display);
@@ -423,4 +416,82 @@ TEST_F(WaylandExtensions, can_retrieve_window_for_surface)
             EXPECT_THAT(surface, NotNull());
             EXPECT_THAT(miral::window_for(surface), Ne(nullptr));   // NotNull() fails to build on 16.04LTS
         }});
+}
+
+TEST_F(WaylandExtensions, some_extensions_are_supported)
+{
+    EXPECT_THAT(miral::WaylandExtensions::supported(), Not(IsEmpty()));
+}
+
+TEST_F(WaylandExtensions, some_extensions_are_recommended)
+{
+    EXPECT_THAT(miral::WaylandExtensions::recommended(), Not(IsEmpty()));
+}
+
+TEST_F(WaylandExtensions, recommeded_extensions_subset_of_supported_extensions)
+{
+    for (auto const& e : miral::WaylandExtensions::recommended())
+    {
+        EXPECT_THAT(miral::WaylandExtensions::supported(), Contains(e));
+    }
+}
+
+TEST_F(WaylandExtensions, disable_can_remove_default_extensions)
+{
+    std::string const extension_to_remove{"zxdg_shell_v6"};
+    miral::WaylandExtensions extensions;
+    extensions.disable(extension_to_remove);
+    ClientGlobalEnumerator enumerator_client;
+
+    add_server_init(extensions);
+    start_server();
+
+    run_as_client(enumerator_client);
+
+    EXPECT_THAT(*enumerator_client.interfaces, Not(Contains(Eq(extension_to_remove))));
+}
+
+TEST_F(WaylandExtensions, enable_can_enable_non_standard_extensions)
+{
+    std::string const extension_to_enable{"zwlr_layer_shell_v1"};
+    miral::WaylandExtensions extensions;
+    extensions.enable(extension_to_enable);
+    ClientGlobalEnumerator enumerator_client;
+
+    add_server_init(extensions);
+    start_server();
+
+    run_as_client(enumerator_client);
+
+    EXPECT_THAT(*enumerator_client.interfaces, Contains(Eq(extension_to_enable)));
+}
+
+TEST_F(WaylandExtensions, enable_can_enable_bespoke_extension)
+{
+    miral::WaylandExtensions extensions;
+    extensions.add_extension_disabled_by_default(mir::examples::server_decoration_extension());
+    extensions.enable(mir::examples::server_decoration_extension().name);
+    ClientGlobalEnumerator enumerator_client;
+
+    add_server_init(extensions);
+    start_server();
+
+    run_as_client(enumerator_client);
+
+    EXPECT_THAT(*enumerator_client.interfaces, Contains(Eq(mir::examples::server_decoration_extension().name)));
+}
+
+TEST_F(WaylandExtensions, disable_can_disable_bespoke_extension)
+{
+    miral::WaylandExtensions extensions;
+    extensions.add_extension(mir::examples::server_decoration_extension());
+    extensions.disable(mir::examples::server_decoration_extension().name);
+    ClientGlobalEnumerator enumerator_client;
+
+    add_server_init(extensions);
+    start_server();
+
+    run_as_client(enumerator_client);
+
+    EXPECT_THAT(*enumerator_client.interfaces, Not(Contains(Eq(mir::examples::server_decoration_extension().name))));
 }

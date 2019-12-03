@@ -13,20 +13,24 @@
 #include "mir/fd.h"
 #include <wayland-server-core.h>
 
+#include "mir/wayland/wayland_base.h"
+
 namespace mir
 {
 namespace wayland
 {
 
-class ServerDecorationManager
+class ServerDecorationManager;
+class ServerDecoration;
+
+class ServerDecorationManager : public Resource
 {
 public:
     static char const constexpr* interface_name = "org_kde_kwin_server_decoration_manager";
-    static int const interface_version = 1;
 
     static ServerDecorationManager* from(struct wl_resource*);
 
-    ServerDecorationManager(struct wl_resource* resource);
+    ServerDecorationManager(struct wl_resource* resource, Version<1>);
     virtual ~ServerDecorationManager() = default;
 
     void send_default_mode_event(uint32_t mode) const;
@@ -52,14 +56,12 @@ public:
 
     static bool is_instance(wl_resource* resource);
 
-    class Global
+    class Global : public wayland::Global
     {
     public:
-        Global(wl_display* display, uint32_t max_version);
-        virtual ~Global();
+        Global(wl_display* display, Version<1>);
 
-        wl_global* const global;
-        uint32_t const max_version;
+        auto interface_name() const -> char const* override;
 
     private:
         virtual void bind(wl_resource* new_org_kde_kwin_server_decoration_manager) = 0;
@@ -70,15 +72,14 @@ private:
     virtual void create(struct wl_resource* id, struct wl_resource* surface) = 0;
 };
 
-class ServerDecoration
+class ServerDecoration : public Resource
 {
 public:
     static char const constexpr* interface_name = "org_kde_kwin_server_decoration";
-    static int const interface_version = 1;
 
     static ServerDecoration* from(struct wl_resource*);
 
-    ServerDecoration(struct wl_resource* resource);
+    ServerDecoration(struct wl_resource* resource, Version<1>);
     virtual ~ServerDecoration() = default;
 
     void send_mode_event(uint32_t mode) const;

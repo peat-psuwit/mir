@@ -44,8 +44,8 @@ public:
 
     std::string name() const override { return {}; }
     geometry::Point top_left() const override { return {}; }
-    geometry::Size client_size() const override { return {};}
-    geometry::Size size() const override { return {}; }
+    geometry::Size content_size() const override { return {};}
+    geometry::Size window_size() const override { return {}; }
     geometry::Rectangle input_bounds() const override { return {{},{}}; }
     bool input_area_contains(mir::geometry::Point const&) const override { return false; }
 
@@ -94,6 +94,17 @@ public:
     MirPointerConfinementState confine_pointer_state() const override { return {}; }
     void placed_relative(geometry::Rectangle const& /*placement*/) override {}
     void start_drag_and_drop(std::vector<uint8_t> const& /*handle*/) override {}
+
+    auto depth_layer() const -> MirDepthLayer override { return mir_depth_layer_application; }
+    void set_depth_layer(MirDepthLayer /*depth_layer*/) override {}
+
+    auto focus_state() const -> MirWindowFocusState override { return mir_window_focus_state_unfocused; }
+    void set_focus_state(MirWindowFocusState /*focus_state*/) override {}
+
+    auto application_id() const -> std::string override { return ""; }
+    void set_application_id(std::string const& /*application_id*/) override {}
+
+    auto session() const -> std::weak_ptr<scene::Session> override { return {}; }
 };
 
 }

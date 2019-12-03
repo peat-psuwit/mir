@@ -21,16 +21,11 @@
 #include "mir_test_framework/stub_platform_native_buffer.h"
 
 namespace mtd = mir::test::doubles;
+namespace ms = mir::scene;
 
 mtd::StubSession::StubSession(pid_t pid)
     : pid(pid)
 {}
-
-std::shared_ptr<mir::frontend::Surface> mtd::StubSession::get_surface(
-    mir::frontend::SurfaceId /*surface*/) const
-{
-    return {};
-}
 
 std::string mtd::StubSession::name() const
 {
@@ -53,11 +48,6 @@ std::shared_ptr<mir::scene::Surface> mtd::StubSession::default_surface() const
 }
 
 void mtd::StubSession::set_lifecycle_state(MirLifecycleState /*state*/)
-{
-}
-
-void mtd::StubSession::send_display_config(
-    mir::graphics::DisplayConfiguration const& /*configuration*/)
 {
 }
 
@@ -90,52 +80,37 @@ void mtd::StubSession::resume_prompt_session()
 {
 }
 
-mir::frontend::SurfaceId mtd::StubSession::create_surface(
+auto mtd::StubSession::create_surface(
+    std::shared_ptr<Session> const& /*session*/,
     mir::scene::SurfaceCreationParameters const& /*params*/,
-    std::shared_ptr<frontend::EventSink> const& /*sink*/)
+    std::shared_ptr<scene::SurfaceObserver> const& /*observer*/) -> std::shared_ptr<ms::Surface>
 {
-    return mir::frontend::SurfaceId{0};
+    return nullptr;
 }
 
-void mtd::StubSession::destroy_surface(mir::frontend::SurfaceId /*surface*/)
+void mtd::StubSession::destroy_surface(std::shared_ptr<scene::Surface> const& /*surface*/)
 {
 }
 
-std::shared_ptr<mir::scene::Surface> mtd::StubSession::surface(
-    mir::frontend::SurfaceId /*surface*/) const
-{
-    return {};
-}
-
-std::shared_ptr<mir::scene::Surface> mtd::StubSession::surface_after(
-    std::shared_ptr<mir::scene::Surface> const& /*ptr*/) const
+auto mtd::StubSession::surface_after(
+    std::shared_ptr<mir::scene::Surface> const& /*ptr*/) const -> std::shared_ptr<mir::scene::Surface>
 {
     return {};
 }
 
-std::shared_ptr<mir::frontend::BufferStream> mtd::StubSession::get_buffer_stream(
-    mir::frontend::BufferStreamId /*stream*/) const
+auto mtd::StubSession::create_buffer_stream(
+    mir::graphics::BufferProperties const& /*props*/) -> std::shared_ptr<compositor::BufferStream>
 {
     return {};
 }
 
-mir::frontend::BufferStreamId mtd::StubSession::create_buffer_stream(
-    mir::graphics::BufferProperties const& /*props*/)
-{
-    return {};
-}
-
-void mtd::StubSession::destroy_buffer_stream(mir::frontend::BufferStreamId /*stream*/)
+void mtd::StubSession::destroy_buffer_stream(std::shared_ptr<frontend::BufferStream> const& /*stream*/)
 {
 }
 
 void mtd::StubSession::configure_streams(
     mir::scene::Surface& /*surface*/,
     std::vector<mir::shell::StreamSpecification> const& /*config*/)
-{
-}
-
-void mtd::StubSession::destroy_surface(std::weak_ptr<scene::Surface> const& /*surface*/)
 {
 }
 

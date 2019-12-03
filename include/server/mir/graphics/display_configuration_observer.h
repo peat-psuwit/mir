@@ -24,7 +24,7 @@
 
 namespace mir
 {
-namespace frontend
+namespace scene
 {
 class Session;
 }
@@ -67,14 +67,14 @@ public:
      * \param [in] session  The session that is updating its display configuration.
      * \param [in] config   The configuration that is being applied to the session.
      */
-    virtual void session_configuration_applied(std::shared_ptr<frontend::Session> const& session,
+    virtual void session_configuration_applied(std::shared_ptr<scene::Session> const& session,
         std::shared_ptr<DisplayConfiguration> const& config) = 0;
     /**
      * Notification after removing the session display configuration.
      *
      * \param [in] session  The session that is removing its display configuration.
      */
-    virtual void session_configuration_removed(std::shared_ptr<frontend::Session> const& session) = 0;
+    virtual void session_configuration_removed(std::shared_ptr<scene::Session> const& session) = 0;
 
     /**
      * Notification after every failed display configuration attempt.
@@ -111,6 +111,15 @@ public:
     virtual void catastrophic_configuration_error(
         std::shared_ptr<DisplayConfiguration const> const& failed_fallback,
         std::exception const& error) = 0;
+
+    /**
+     * Notification that the session should send the given display configuration
+     *
+     * It may or may not be a session configuration. Used only to implement the mirclient API
+     */
+    virtual void configuration_updated_for_session(
+        std::shared_ptr<scene::Session> const& session,
+        std::shared_ptr<DisplayConfiguration const> const& config) = 0;
 
 protected:
     DisplayConfigurationObserver() = default;

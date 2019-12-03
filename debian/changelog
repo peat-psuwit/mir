@@ -1,6 +1,167 @@
-mir (1.2.0) xenial; urgency=medium
+mir (1.6.0) xenial; urgency=medium
 
-  * New upstream release 1.1.2
+  * New upstream release 1.6.0
+
+    - ABI summary:
+      . mirclient ABI unchanged at 9
+      . miral ABI unchanged at 3
+      . mirserver ABI bumped to 52
+      . mircommon ABI unchanged at 7
+      . mirplatform ABI bumped to 17
+      . mirprotobuf ABI unchanged at 3
+      . mirplatformgraphics ABI unchanged to 16
+      . mirclientplatform ABI unchanged at 5
+      . mirinputplatform ABI unchanged at 7
+      . mircore ABI unchanged at 1
+      . mircookie ABI unchanged at 2
+    - Enhancements:
+      . [mirclient] Drop some more mirclient support: infrastructure, unit-tests
+      . [Wayland] Avoid unnecessary calls into Window Management (Fixes #1049)
+      . [graphics-platforms] Improve diagnostics by running the platform probe
+        even when manually selected. (Fixes #1045)
+      . [graphics-platforms] Provide a generic way to handle the Wayland buffer
+        consumption
+      . [graphics-platforms] tests: Add basic manual platform test harness
+      . [graphics-platforms] Add "Wayland platform"
+      . [graphics-platforms] Initial rpi-dispmanx platform
+      . Drop the --wayland-socket-name (redundant) configuration option
+      . New `mir_demo_client_wayland_egl_spinner` in mir-tests-tools package
+      . New `miral-system-compositor` in mir-demos package
+    - Bugs fixed:
+      . Crashes & lockups caused by thread-unsafe code. (Fixes #1106)
+      . Mir crashes when surface sets parent to null. (Fixes #1053)
+      . Fix build against GMock/GTest ≥ 1.9
+      . Fix build on Arch (Fixes #1084)
+
+ -- Alan Griffiths <alan.griffiths@canonical.com>  Fri, 29 Nov 2019 16:29:00 +0100
+
+mir (1.5.0) UNRELEASED; urgency=medium
+
+  * New upstream release 1.5.0
+
+    - ABI summary:
+      . mirclient ABI unchanged at 9
+      . miral ABI unchanged at 3
+      . mirserver ABI bumped to 51
+      . mircommon ABI unchanged at 7
+      . mirplatform ABI unchanged at 16
+      . mirprotobuf ABI unchanged at 3
+      . mirplatformgraphics ABI unchanged to 16
+      . mirclientplatform ABI unchanged at 5
+      . mirinputplatform ABI unchanged at 7
+      . mircore ABI unchanged at 1
+      . mircookie ABI unchanged at 2
+    - Enhancements:
+      . [snapcraft] Update shared memory handling to work both in confined snaps
+        without the "mir" interface and on pre-3.11 kernels.
+      . Split arch-specific part of libmirwayland-dev into a -bin package
+      . [MirAL] Allow clipping windows to a specified area
+      . [MirAL] Add application_id surface property
+      . [MirAL] Make it possible for Mir based servers to set up the
+        environment variables for launching clients
+      . Fixes for new Protobuf on Arch
+      . [Renderer] Also log supported EGL and GL extensions
+      . [Wayland] Bump xdg output to v3 (workaround an Xwayland problem on eoan)
+    - Bugs fixed:
+      . [MirAL] Can get the Mir window of a layer shell surface. (Fixes #963)
+      . [Wayland] Send wl_buffer.release on the Wayland thread. (Fixes #951)
+      . Set output_id for LayerShell surfaces & clean up and test attached
+        windows on outputs. (Fixes: #980)
+      . [MirAL] Move maximized windows when output is unplugged (Fixes #853)
+      . [Wayland] Fix crashes in wayland::OutputManager when output is unplugged
+      . PixelSource::read() should execute the supplied block. (Fixes #1009)
+      . [build] Fix non-mesa builds.
+      . [Wayland] Resync keyboard state after server is paused. (Fixes #999)
+      . [Wayland] Convert buffer stream to cursor images in wl_pointer.
+        (Fixes #1000)
+
+ -- Alan Griffiths <alan.griffiths@canonical.com>  Wed, 9 Oct 2019 11:09:00 +0100
+
+mir (1.4.0) UNRELEASED; urgency=medium
+
+  * New upstream release 1.4.0
+
+    - ABI summary:
+      . mirclient ABI unchanged at 9
+      . miral ABI unchanged at 3
+      . mirserver ABI bumped to 50
+      . mircommon ABI unchanged at 7
+      . mirplatform ABI unchanged at 16
+      . mirprotobuf ABI unchanged at 3
+      . mirplatformgraphics ABI unchanged to 16
+      . mirclientplatform ABI unchanged at 5
+      . mirinputplatform ABI unchanged at 7
+      . mircore ABI unchanged at 1
+      . mircookie ABI unchanged at 2
+    - Enhancements:
+      . [MirAL] Support for exclusive zones
+      . [Wayland] Many Layer Shell improvements
+      . [mirclient] Make the mirclient socket optional and disabled by default
+      . [mir-utils] Delete mirrun and mirbacklight
+      . [mir-demos] Replace using `miral-wayland` in the scripts with a name of
+        the form `wayland-[0-9]`
+    - Bugs fixed:
+      . [Wayland] To accommodate GTK3 publish bespoke extensions before
+        wl_seat. (Fixes #922)
+      . [Wayland] Handle mir_event_type_close_window. (Fixes #946)
+      . [Wayland] Send wl_buffer.release on the Wayland thread. (Fixes #951)
+      . [wlcs test fixture] Fix command-line processing so that
+        `--wayland-extensions` can be used. (Fixes #906)
+      . Add header that needs to be explicitly included for protobuf 3.8.
+        (Fixes #913)
+      . Track registering miral::WaylandExtensions objects with mir::Servers
+        and error if there is more than one. (Fixes #875)
+
+ -- Alan Griffiths <alan.griffiths@canonical.com>  Fri, 9 Aug 2019 13:54:00 +0100
+
+mir (1.3.0) UNRELEASED; urgency=medium
+
+  * New upstream release 1.3.0
+
+    - ABI summary:
+      . mirclient ABI unchanged at 9
+      . miral ABI unchanged at 3
+      . mirserver ABI bumped to 49
+      . mircommon ABI unchanged at 7
+      . mirplatform ABI unchanged at 16
+      . mirprotobuf ABI unchanged at 3
+      . mirplatformgraphics ABI unchanged to 16
+      . mirclientplatform ABI unchanged at 5
+      . mirinputplatform ABI unchanged at 7
+      . mircore ABI unchanged at 1
+      . mircookie ABI unchanged at 2
+    - Enhancements:
+      . [Wayland] Rename zxdg_output_v1 -> zxdg_output_manager_v1
+      . [Wayland] Eagerly send buffer release events
+      . [Wayland] Eagerly execute work when on Wayland thread
+      . [MirAL] Surface depth layer support
+      . [MirAL] Application Zone support
+      . [MirAL] Explicit handling of Wayland extensions in MirAL and Mir
+      . [MirAL] Do not place parentless windows relative to existing windows
+      . [Wayland/mirtest] publish miral::TestWlcsDisplayServer and
+        miral::TestServer fixtures in mirtest-dev. (Fixes #878)
+      . [Wayland/generator] Force compile-time error if XML/generated classes
+        are updated to a new version without also updating the child classes
+      . [Wayland/generator] Add base objects for Wayland objects and globals
+      . [Wayland/generator] Add a constructor-from-parent for objects that can
+        be server-constructed
+      . [Examples] Implement Ctrl-Alt-T handling for miral-shell
+    - Bugs fixed:
+      . [Wayland] Better handle window role state changes. (Fixes #836)
+      . [Wayland] Fix INCLUDEDIR for the mirwayland.pc file. (Fixes #873)
+      . [Wayland] Process output update notifications on the correct thread.
+        (Fixes: #886)
+      . [MirAL] Allow unfocused windows to receive mouse down events
+      . [MirAL] Handle exceptions propagating from InternalClient code
+      . Add a package config file for mircommon and reference it mirwayland and
+        mirplatform. (Fixes: #868)
+      . [nested] Make sure we destroy eglImage before class gets destructed
+
+ -- Alan Griffiths <alan.griffiths@canonical.com>  Mon, 1 Jul 2019 11:24:00 +0100
+
+mir (1.2.0) UNRELEASED; urgency=medium
+
+  * New upstream release 1.2.0
 
     - ABI summary:
       . mirclient ABI unchanged at 9

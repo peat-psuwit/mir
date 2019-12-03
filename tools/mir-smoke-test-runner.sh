@@ -6,7 +6,7 @@ date --utc --iso-8601=seconds | xargs echo "[timestamp] Start time :"
 mir_rc=0
 timeout=3
 wayland_display="mir-smoke-test"
-options="--wayland-socket-name=${wayland_display} --test-timeout=${timeout}"
+options="--test-timeout=${timeout}"
 
 if [ -v MIR_SOCKET ]
 then
@@ -27,8 +27,8 @@ echo "I: client_list=" ${client_list}
 for client in ${client_list}; do
     echo running client ${client}
     date --utc --iso-8601=seconds | xargs echo "[timestamp] Start :" ${client}
-    echo WAYLAND_DISPLAY=${wayland_display} ${root}/mir_demo_server ${options} --test-client ${root}/${client}
-    if   WAYLAND_DISPLAY=${wayland_display} ${root}/mir_demo_server ${options} --test-client ${root}/${client}
+    echo MIR_SERVER_ENABLE_MIRCLIENT= WAYLAND_DISPLAY=${wayland_display} ${root}/mir_demo_server ${options} --test-client ${root}/${client}
+    if   MIR_SERVER_ENABLE_MIRCLIENT= WAYLAND_DISPLAY=${wayland_display} ${root}/mir_demo_server ${options} --test-client ${root}/${client}
     then
       echo "I: [PASSED]" ${root}/${client}
     else

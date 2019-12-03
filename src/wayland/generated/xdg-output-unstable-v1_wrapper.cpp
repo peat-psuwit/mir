@@ -14,26 +14,6 @@
 
 #include "mir/log.h"
 
-namespace
-{
-void internal_error_processing_request(struct wl_client* client, std::string const& method_name)
-{
-#if (WAYLAND_VERSION_MAJOR > 1 || (WAYLAND_VERSION_MAJOR == 1 && WAYLAND_VERSION_MINOR > 16))
-    wl_client_post_implementation_error(
-        client,
-        "Mir internal error processing %s request",
-        method_name.c_str());
-#else
-    wl_client_post_no_memory(client);
-#endif
-    ::mir::log(
-        ::mir::logging::Severity::error,
-        "frontend:Wayland",
-        std::current_exception(),
-        "Exception processing " + method_name + " request");
-}
-}
-
 namespace mir
 {
 namespace wayland
@@ -66,6 +46,8 @@ mw::XdgOutputManagerV1* mw::XdgOutputManagerV1::from(struct wl_resource* resourc
 
 struct mw::XdgOutputManagerV1::Thunks
 {
+    static int const supported_version;
+
     static void destroy_thunk(struct wl_client* client, struct wl_resource* resource)
     {
         auto me = static_cast<XdgOutputManagerV1*>(wl_resource_get_user_data(resource));
@@ -110,7 +92,7 @@ struct mw::XdgOutputManagerV1::Thunks
         auto resource = wl_resource_create(
             client,
             &zxdg_output_manager_v1_interface_data,
-            std::min(version, me->max_version),
+            std::min((int)version, Thunks::supported_version),
             id);
         if (resource == nullptr)
         {
@@ -132,7 +114,9 @@ struct mw::XdgOutputManagerV1::Thunks
     static void const* request_vtable[];
 };
 
-mw::XdgOutputManagerV1::XdgOutputManagerV1(struct wl_resource* resource)
+int const mw::XdgOutputManagerV1::Thunks::supported_version = 3;
+
+mw::XdgOutputManagerV1::XdgOutputManagerV1(struct wl_resource* resource, Version<3>)
     : client{wl_resource_get_client(resource)},
       resource{resource}
 {
@@ -153,24 +137,19 @@ void mw::XdgOutputManagerV1::destroy_wayland_object() const
     wl_resource_destroy(resource);
 }
 
-mw::XdgOutputManagerV1::Global::Global(wl_display* display, uint32_t max_version)
-    : global{wl_global_create(
-        display,
-        &zxdg_output_manager_v1_interface_data,
-        max_version,
-        this,
-        &Thunks::bind_thunk)},
-      max_version{max_version}
-{
-    if (global == nullptr)
-    {
-        BOOST_THROW_EXCEPTION((std::runtime_error{"Failed to export zxdg_output_manager_v1 interface"}));
-    }
-}
+mw::XdgOutputManagerV1::Global::Global(wl_display* display, Version<3>)
+    : wayland::Global{
+          wl_global_create(
+              display,
+              &zxdg_output_manager_v1_interface_data,
+              Thunks::supported_version,
+              this,
+              &Thunks::bind_thunk)}
+{}
 
-mw::XdgOutputManagerV1::Global::~Global()
+auto mw::XdgOutputManagerV1::Global::interface_name() const -> char const*
 {
-    wl_global_destroy(global);
+    return XdgOutputManagerV1::interface_name;
 }
 
 struct wl_interface const* mw::XdgOutputManagerV1::Thunks::get_xdg_output_types[] {
@@ -194,6 +173,8 @@ mw::XdgOutputV1* mw::XdgOutputV1::from(struct wl_resource* resource)
 
 struct mw::XdgOutputV1::Thunks
 {
+    static int const supported_version;
+
     static void destroy_thunk(struct wl_client* client, struct wl_resource* resource)
     {
         auto me = static_cast<XdgOutputV1*>(wl_resource_get_user_data(resource));
@@ -217,7 +198,9 @@ struct mw::XdgOutputV1::Thunks
     static void const* request_vtable[];
 };
 
-mw::XdgOutputV1::XdgOutputV1(struct wl_resource* resource)
+int const mw::XdgOutputV1::Thunks::supported_version = 3;
+
+mw::XdgOutputV1::XdgOutputV1(struct wl_resource* resource, Version<3>)
     : client{wl_resource_get_client(resource)},
       resource{resource}
 {
@@ -295,13 +278,13 @@ namespace wayland
 
 struct wl_interface const zxdg_output_manager_v1_interface_data {
     mw::XdgOutputManagerV1::interface_name,
-    mw::XdgOutputManagerV1::interface_version,
+    mw::XdgOutputManagerV1::Thunks::supported_version,
     2, mw::XdgOutputManagerV1::Thunks::request_messages,
     0, nullptr};
 
 struct wl_interface const zxdg_output_v1_interface_data {
     mw::XdgOutputV1::interface_name,
-    mw::XdgOutputV1::interface_version,
+    mw::XdgOutputV1::Thunks::supported_version,
     1, mw::XdgOutputV1::Thunks::request_messages,
     5, mw::XdgOutputV1::Thunks::event_messages};
 

@@ -17,6 +17,7 @@
  */
 
 #include "output_manager.h"
+#include "wayland_executor.h"
 
 #include <algorithm>
 
@@ -31,7 +32,25 @@ mf::Output::Output(wl_display* display, mg::DisplayConfigurationOutput const& in
 
 mf::Output::~Output()
 {
+    // Notify all clients that the wl_output has gone away
     wl_global_destroy(output);
+    /*
+     * The above call doesn't release the wl_resources any client
+     * has bound, merely tells them that the global has gone away.
+     * The server-side wl_resources have to remain valid so that
+     * the client can call wl_output::release on it.
+     *
+     * We therefore need to ensure that destroying the wl_resource-s
+     * doesn't result in attempting to access fields of the now-destroyed
+     * Output.
+     */
+    for (auto const& client : resource_map)
+    {
+        for (auto* resource : client.second)
+        {
+            wl_resource_set_destructor(resource, [](auto) {});
+        }
+    }
 }
 
 void mf::Output::handle_configuration_changed(mg::DisplayConfigurationOutput const& config)
@@ -143,8 +162,20 @@ wl_global* mf::Output::make_output(wl_display* display)
     return wl_global_create(
         display,
         &wl_output_interface,
-        2,
+        3,
         this, &on_bind);
+}
+
+namespace
+{
+void release_wl_output(wl_client*, wl_resource* releasing)
+{
+    wl_resource_destroy(releasing);
+}
+
+struct wl_output_interface const wl_output_impl{
+    &release_wl_output
+};
 }
 
 void mf::Output::on_bind(wl_client* client, void* data, uint32_t version, uint32_t id)
@@ -152,7 +183,7 @@ void mf::Output::on_bind(wl_client* client, void* data, uint32_t version, uint32
     auto output = reinterpret_cast<Output*>(data);
     auto resource = wl_resource_create(
         client, &wl_output_interface,
-        std::min(version, 2u), id);
+        std::min(version, 3u), id);
     if (resource == NULL)
     {
         wl_client_post_no_memory(client);
@@ -160,8 +191,7 @@ void mf::Output::on_bind(wl_client* client, void* data, uint32_t version, uint32
     }
 
     output->resource_map[client].push_back(resource);
-    wl_resource_set_destructor(resource, &resource_destructor);
-    wl_resource_set_user_data(resource, &(output->resource_map));
+    wl_resource_set_implementation(resource, &wl_output_impl, &(output->resource_map), mf::Output::resource_destructor);
 
     send_initial_config(resource, output->current_config);
 }
@@ -181,9 +211,10 @@ void mf::Output::resource_destructor(wl_resource* resource)
 }
 
 
-mf::OutputManager::OutputManager(wl_display* display, std::shared_ptr<MirDisplay> const& display_config) :
+mf::OutputManager::OutputManager(wl_display* display, std::shared_ptr<MirDisplay> const& display_config, std::shared_ptr<Executor> const& executor) :
     display_config_{display_config},
-    display{display}
+    display{display},
+    executor{executor}
 {
     display_config->register_interest(this);
     display_config->for_each_output(std::bind(&OutputManager::create_output, this, std::placeholders::_1));
@@ -229,23 +260,27 @@ void mf::OutputManager::create_output(mg::DisplayConfigurationOutput const& init
 
 void mf::OutputManager::handle_configuration_change(mg::DisplayConfiguration const& config)
 {
-    config.for_each_output([this](mg::DisplayConfigurationOutput const& output_config)
-        {
-            auto output_iter = outputs.find(output_config.id);
-            if (output_iter != outputs.end())
+    std::shared_ptr<mg::DisplayConfiguration> pconfig{config.clone()};
+    executor->spawn([config = std::move(pconfig), this]
+    {
+        config->for_each_output([this](mg::DisplayConfigurationOutput const& output_config)
             {
-                if (output_config.used)
+                auto output_iter = outputs.find(output_config.id);
+                if (output_iter != outputs.end())
                 {
-                    output_iter->second->handle_configuration_changed(output_config);
+                    if (output_config.used)
+                    {
+                        output_iter->second->handle_configuration_changed(output_config);
+                    }
+                    else
+                    {
+                        outputs.erase(output_iter);
+                    }
                 }
-                else
+                else if (output_config.used)
                 {
-                    outputs.erase(output_iter);
+                    outputs[output_config.id] = std::make_unique<Output>(display, output_config);
                 }
-            }
-            else if (output_config.used)
-            {
-                outputs[output_config.id] = std::make_unique<Output>(display, output_config);
-            }
-        });
+            });
+    });
 }

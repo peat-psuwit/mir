@@ -19,28 +19,60 @@
 #ifndef MIR_SCENE_SESSION_H_
 #define MIR_SCENE_SESSION_H_
 
-#include "mir/frontend/session.h"
+#include "mir_toolkit/common.h"
+#include "mir_toolkit/client_types.h"
+#include "mir/graphics/buffer_id.h"
+#include "mir/geometry/size.h"
 #include "mir/scene/snapshot.h"
 
 #include <vector>
 #include <sys/types.h>
+#include <memory>
+#include <string>
 
 namespace mir
 {
-namespace frontend { class EventSink; }
-namespace shell { struct StreamSpecification; }
+class ClientVisibleError;
+namespace compositor
+{
+class BufferStream;
+}
+namespace frontend
+{
+class EventSink;
+class Surface;
+class BufferStream;
+}
+namespace shell
+{
+struct StreamSpecification;
+}
+namespace graphics
+{
+struct BufferProperties;
+class Buffer;
+}
 namespace scene
 {
 class Surface;
+class SurfaceObserver;
 struct SurfaceCreationParameters;
 
-class Session : public frontend::Session
+/// A single connection to a client application
+/// Every mirclient session and wl_client maps to a scene::Session
+class Session
 {
 public:
-    virtual pid_t process_id() const = 0;
+    virtual ~Session() = default;
+
+    virtual auto process_id() const -> pid_t = 0;
+    virtual auto name() const -> std::string = 0;
+
+    virtual void send_error(ClientVisibleError const&) = 0;
+    virtual void send_input_config(MirInputConfig const& config) = 0;
 
     virtual void take_snapshot(SnapshotCallback const& snapshot_taken) = 0;
-    virtual std::shared_ptr<Surface> default_surface() const = 0;
+    virtual auto default_surface() const -> std::shared_ptr<Surface> = 0;
     virtual void set_lifecycle_state(MirLifecycleState state) = 0;
 
     virtual void hide() = 0;
@@ -51,20 +83,27 @@ public:
     virtual void suspend_prompt_session() = 0;
     virtual void resume_prompt_session() = 0;
 
-    virtual frontend::SurfaceId create_surface(
+    /// \param session can be nullptr (useful for testing). If not nullptr, must be equal to this. Must be passed in
+    ///                because std::enable_shared_from_this causes trouble
+    /// \param params data used to create the surface
+    /// \param observer automatically added to surface after creation
+    /// \return a newly created surface
+    virtual auto create_surface(
+        std::shared_ptr<Session> const& session,
         SurfaceCreationParameters const& params,
-        std::shared_ptr<frontend::EventSink> const& sink) = 0;
-    virtual void destroy_surface(frontend::SurfaceId surface) = 0;
+        std::shared_ptr<scene::SurfaceObserver> const& observer) -> std::shared_ptr<Surface> = 0;
+    virtual void destroy_surface(std::shared_ptr<Surface> const& surface) = 0;
+    virtual auto surface_after(std::shared_ptr<Surface> const& surface) const -> std::shared_ptr<Surface> = 0;
 
-    virtual std::shared_ptr<Surface> surface(frontend::SurfaceId surface) const = 0;
-    virtual std::shared_ptr<Surface> surface_after(std::shared_ptr<Surface> const&) const = 0;
-
-    virtual std::shared_ptr<frontend::BufferStream> get_buffer_stream(frontend::BufferStreamId stream) const = 0;
-
-    virtual frontend::BufferStreamId create_buffer_stream(graphics::BufferProperties const& props) = 0;
-    virtual void destroy_buffer_stream(frontend::BufferStreamId stream) = 0;
+    virtual auto create_buffer_stream(graphics::BufferProperties const& props)
+        -> std::shared_ptr<compositor::BufferStream> = 0;
+    virtual void destroy_buffer_stream(std::shared_ptr<frontend::BufferStream> const& stream) = 0;
     virtual void configure_streams(Surface& surface, std::vector<shell::StreamSpecification> const& config) = 0;
-    virtual void destroy_surface(std::weak_ptr<Surface> const& surface) = 0;
+
+protected:
+    Session() = default;
+    Session(Session const&) = delete;
+    Session& operator=(Session const&) = delete;
 };
 }
 }

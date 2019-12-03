@@ -116,6 +116,36 @@ struct WindowInfo
     void userdata(std::shared_ptr<void> userdata);
 
     void swap(WindowInfo& rhs) { std::swap(self, rhs.self); }
+
+    auto depth_layer() const -> MirDepthLayer;
+    void depth_layer(MirDepthLayer depth_layer);
+
+    /// Get the edges of the output that the window is attached to
+    /// (only meaningful for windows in state mir_window_state_attached)
+    auto attached_edges() const -> MirPlacementGravity;
+    /// Set the edges of the output that the window should be attached to
+    /// (only meaningful for windows in state mir_window_state_attached)
+    void attached_edges(MirPlacementGravity edges);
+
+    /// Mir will try to avoid occluding the area covered by this rectangle (relative to the window)
+    /// (only meaningful when the window is attached to an edge)
+    auto exclusive_rect() const -> mir::optional_value<mir::geometry::Rectangle>;
+    /// Set the area to keep exclusive to this window
+    /// (only meaningful when the window is attached to an edge)
+    void exclusive_rect(mir::optional_value<mir::geometry::Rectangle> const& rect);
+
+    /// Mir will not render anything outside this rectangle
+    auto clip_area() const -> mir::optional_value<mir::geometry::Rectangle>;
+    void clip_area(mir::optional_value<mir::geometry::Rectangle> const& area);
+
+    /// The D-bus service name and basename of the app's .desktop file
+    /// See http://standards.freedesktop.org/desktop-entry-spec/
+    /// \remark Since MirAL 2.8
+    ///@{
+    auto application_id() const -> std::string;
+    void application_id(std::string const& application_id);
+    ///@}
+
 private:
     struct Self;
     std::unique_ptr<Self> self;

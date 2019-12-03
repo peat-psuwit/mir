@@ -26,6 +26,8 @@
 #include "active_outputs.h"
 #include "miral/application.h"
 #include "miral/application_info.h"
+#include "miral/zone.h"
+#include "miral/output.h"
 #include "mru_window_list.h"
 
 #include <mir/geometry/rectangles.h>
@@ -35,6 +37,7 @@
 
 #include <boost/bimap.hpp>
 #include <boost/bimap/multiset_of.hpp>
+#include <experimental/optional>
 
 #include <map>
 #include <mutex>
@@ -47,10 +50,6 @@ namespace graphics { class DisplayConfigurationObserver; }
 
 namespace miral
 {
-class WorkspacePolicy;
-class WindowManagementPolicyAddendum2;
-class WindowManagementPolicyAddendum3;
-class WindowManagementPolicyAddendum4;
 class DisplayConfigurationListeners;
 
 using mir::shell::SurfaceSet;
@@ -79,8 +78,10 @@ public:
     auto add_surface(
         std::shared_ptr<mir::scene::Session> const& session,
         mir::scene::SurfaceCreationParameters const& params,
-        std::function<mir::frontend::SurfaceId(std::shared_ptr<mir::scene::Session> const& session, mir::scene::SurfaceCreationParameters const& params)> const& build)
-    -> mir::frontend::SurfaceId override;
+        std::function<std::shared_ptr<mir::scene::Surface>(
+            std::shared_ptr<mir::scene::Session> const& session,
+            mir::scene::SurfaceCreationParameters const& params)> const& build)
+    -> std::shared_ptr<mir::scene::Surface> override;
 
     void modify_surface(
         std::shared_ptr<mir::scene::Session> const& session,
@@ -93,8 +94,6 @@ public:
 
     void add_display(mir::geometry::Rectangle const& area) override
     __attribute__((deprecated("Mir doesn't reliably call this: it is ignored. Use add_display_for_testing() instead")));
-
-    void add_display_for_testing(mir::geometry::Rectangle const& area);
 
     void remove_display(mir::geometry::Rectangle const& area) override;
 
@@ -197,6 +196,28 @@ public:
     void invoke_under_lock(std::function<void()> const& callback) override;
 
 private:
+    /// An area for windows to be placed in
+    struct DisplayArea
+    {
+        DisplayArea(Output const& output)
+            : area{output.extents()},
+              application_zone{Zone{output.extents()}},
+              output{output}
+        {
+        }
+
+        DisplayArea(Rectangle const& area)
+            : area{area},
+              application_zone{Zone{area}}
+        {
+        }
+
+        Rectangle area; ///< The full area. If there is an output this is the same as the output's extents
+        Zone application_zone;
+        std::experimental::optional<Output> output;
+        std::set<Window> attached_windows; ///< Maximized/anchored/etc windows attached to this area
+    };
+
     using SurfaceInfoMap = std::map<std::weak_ptr<mir::scene::Surface>, WindowInfo, std::owner_less<std::weak_ptr<mir::scene::Surface>>>;
     using SessionInfoMap = std::map<std::weak_ptr<mir::scene::Session>, ApplicationInfo, std::owner_less<std::weak_ptr<mir::scene::Session>>>;
 
@@ -214,6 +235,7 @@ private:
     std::shared_ptr<DeadWorkspaces> const dead_workspaces{std::make_shared<DeadWorkspaces>()};
 
     std::unique_ptr<WindowManagementPolicy> const policy;
+    WindowManagementPolicy::ApplicationZoneAddendum* const policy_application_zone_addendum;
 
     std::mutex mutex;
     SessionInfoMap app_info;
@@ -224,7 +246,7 @@ private:
     MirEvent const* last_input_event{nullptr};
     miral::MRUWindowList mru_active_windows;
     std::set<Window> fullscreen_surfaces;
-    std::set<Window> maximized_surfaces;
+    std::vector<std::shared_ptr<DisplayArea>> display_areas; ///< For now these will map 1:1 to outputs, but this should not be assumed
 
     friend class Workspace;
     using wwbimap_t = boost::bimap<
@@ -247,20 +269,32 @@ private:
         miral::Application const& session,
         std::vector<std::shared_ptr<Workspace>> const& workspaces) -> bool;
 
-    auto place_new_surface(ApplicationInfo const& app_info, WindowSpecification parameters) -> WindowSpecification;
+    auto place_new_surface(WindowSpecification parameters) -> WindowSpecification;
     auto place_relative(mir::geometry::Rectangle const& parent, miral::WindowSpecification const& parameters, Size size)
         -> mir::optional_value<Rectangle>;
 
     void move_tree(miral::WindowInfo& root, mir::geometry::Displacement movement);
+    void set_tree_depth_layer(miral::WindowInfo& root, MirDepthLayer new_layer);
     void erase(miral::WindowInfo const& info);
     void validate_modification_request(WindowSpecification const& modifications, WindowInfo const& window_info) const;
     void place_and_size(WindowInfo& root, Point const& new_pos, Size const& new_size);
+    void place_attached_to_zone(
+        WindowInfo& info,
+        mir::geometry::Rectangle const& application_zone,
+        mir::geometry::Rectangle const& output_area);
+    void update_attached_and_fullscreen_sets(WindowInfo& window_info, MirWindowState state);
     void set_state(miral::WindowInfo& window_info, MirWindowState value);
-    auto fullscreen_rect_for(WindowInfo const& window_info) const -> Rectangle;
     void remove_window(Application const& application, miral::WindowInfo const& info);
     void refocus(Application const& application, Window const& parent,
                  std::vector<std::shared_ptr<Workspace>> const& workspaces_containing_window);
     auto workspaces_containing(Window const& window) const -> std::vector<std::shared_ptr<Workspace>>;
+    auto active_display_area() const -> std::shared_ptr<DisplayArea>;
+    auto display_area_for(WindowInfo const& info) const -> std::shared_ptr<DisplayArea>;
+    /// Returns the application zone area after shrinking it for the exclusive zone if needed
+    static auto apply_exclusive_rect_to_application_zone(
+        mir::geometry::Rectangle const& original_zone,
+        mir::geometry::Rectangle const& exclusive_rect_global_coords,
+        MirPlacementGravity attached_edges) -> mir::geometry::Rectangle;
 
     void advise_output_create(Output const& output) override;
     void advise_output_update(Output const& updated, Output const& original) override;

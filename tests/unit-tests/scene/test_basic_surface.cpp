@@ -30,6 +30,7 @@
 #include "mir/test/doubles/stub_cursor_image.h"
 #include "mir/test/doubles/mock_buffer_stream.h"
 #include "mir/test/doubles/stub_buffer.h"
+#include "mir/test/doubles/stub_session.h"
 #include "mir/test/fake_shared.h"
 
 #include "src/server/report/null_report_factory.h"
@@ -68,6 +69,7 @@ public:
     MOCK_METHOD1(client_surface_close_requested, void(ms::Surface const*));
     MOCK_METHOD2(cursor_image_set_to, void(ms::Surface const*, mir::graphics::CursorImage const& image));
     MOCK_METHOD1(cursor_image_removed, void(ms::Surface const*));
+    MOCK_METHOD2(application_id_set_to, void(ms::Surface const*, std::string const&));
 };
 
 struct BasicSurfaceTest : public testing::Test
@@ -87,6 +89,7 @@ struct BasicSurfaceTest : public testing::Test
     std::list<ms::StreamInfo> streams { { mock_buffer_stream, {}, {} } };
 
     ms::BasicSurface surface{
+        nullptr /* session */,
         name,
         rect,
         mir_pointer_unconfined,
@@ -107,10 +110,27 @@ struct BasicSurfaceTest : public testing::Test
 TEST_F(BasicSurfaceTest, basics)
 {
     EXPECT_EQ(name, surface.name());
-    EXPECT_EQ(rect.size, surface.size());
+    EXPECT_EQ(rect.size, surface.window_size());
     EXPECT_EQ(rect.top_left, surface.top_left());
     for (auto& renderable : surface.generate_renderables(this))
         EXPECT_FALSE(renderable->shaped());
+}
+
+TEST_F(BasicSurfaceTest, can_be_created_with_session)
+{
+    using namespace testing;
+
+    auto const session = std::make_shared<mtd::StubSession>();
+    ms::BasicSurface surface{
+        session,
+        name,
+        geom::Rectangle{{0,0}, {100,100}},
+        mir_pointer_unconfined,
+        streams,
+        std::shared_ptr<mg::CursorImage>(),
+        report};
+
+    EXPECT_THAT(surface.session().lock(), Eq(session));
 }
 
 TEST_F(BasicSurfaceTest, buffer_stream_ids_always_unique)
@@ -122,10 +142,14 @@ TEST_F(BasicSurfaceTest, buffer_stream_ids_always_unique)
     for (auto& surface : surfaces)
     {
         surface = std::make_unique<ms::BasicSurface>(
-                name, rect, mir_pointer_unconfined,
+                nullptr /* session */,
+                name,
+                rect,
+                mir_pointer_unconfined,
                 std::list<ms::StreamInfo> {
                     { std::make_shared<testing::NiceMock<mtd::MockBufferStream>>(), {}, {} } },
-                std::shared_ptr<mg::CursorImage>(), report);
+                std::shared_ptr<mg::CursorImage>(),
+                report);
         for (auto& renderable : surface->generate_renderables(this))
             ids.insert(renderable->id());
     }
@@ -142,8 +166,13 @@ TEST_F(BasicSurfaceTest, id_never_invalid)
     for (auto& surface : surfaces)
     {
         surface = std::make_unique<ms::BasicSurface>(
-                name, rect, mir_pointer_unconfined, streams,
-                std::shared_ptr<mg::CursorImage>(), report);
+                nullptr /* session */,
+                name,
+                rect,
+                mir_pointer_unconfined,
+                streams,
+                std::shared_ptr<mg::CursorImage>(),
+                report);
 
         for (auto& renderable : surface->generate_renderables(this))
             EXPECT_THAT(renderable->id(), testing::Ne(nullptr));
@@ -173,15 +202,15 @@ TEST_F(BasicSurfaceTest, update_size)
 
     surface.add_observer(observer);
 
-    EXPECT_EQ(rect.size, surface.size());
-    EXPECT_NE(new_size, surface.size());
+    EXPECT_EQ(rect.size, surface.window_size());
+    EXPECT_NE(new_size, surface.window_size());
 
     auto renderables = surface.generate_renderables(compositor_id);
     ASSERT_THAT(renderables.size(), testing::Eq(1));
     auto old_transformation = renderables[0]->transformation();
 
     surface.resize(new_size);
-    EXPECT_EQ(new_size, surface.size());
+    EXPECT_EQ(new_size, surface.window_size());
     // Size no longer affects transformation:
     renderables = surface.generate_renderables(compositor_id);
     ASSERT_THAT(renderables.size(), testing::Eq(1));
@@ -196,14 +225,14 @@ TEST_F(BasicSurfaceTest, size_equals_client_size)
 {
     geom::Size const new_size{34, 56};
 
-    EXPECT_EQ(rect.size, surface.size());
-    EXPECT_EQ(rect.size, surface.client_size());
-    EXPECT_NE(new_size, surface.size());
-    EXPECT_NE(new_size, surface.client_size());
+    EXPECT_EQ(rect.size, surface.window_size());
+    EXPECT_EQ(rect.size, surface.content_size());
+    EXPECT_NE(new_size, surface.window_size());
+    EXPECT_NE(new_size, surface.content_size());
 
     surface.resize(new_size);
-    EXPECT_EQ(new_size, surface.size());
-    EXPECT_EQ(new_size, surface.client_size());
+    EXPECT_EQ(new_size, surface.window_size());
+    EXPECT_EQ(new_size, surface.content_size());
 }
 
 TEST_F(BasicSurfaceTest, test_surface_set_transformation_updates_transform)
@@ -248,6 +277,7 @@ TEST_F(BasicSurfaceTest, test_surface_visibility)
 
     // Must be a fresh surface to guarantee no frames posted yet...
     ms::BasicSurface surface{
+        nullptr /* session */,
         name,
         rect,
         mir_pointer_unconfined,
@@ -286,6 +316,7 @@ TEST_F(BasicSurfaceTest, default_region_is_surface_rectangle)
     geom::Point pt(1,1);
     geom::Size one_by_one{geom::Width{1}, geom::Height{1}};
     ms::BasicSurface surface{
+        nullptr /* session */,
         name,
         geom::Rectangle{pt, one_by_one},
         mir_pointer_unconfined,
@@ -321,6 +352,7 @@ TEST_F(BasicSurfaceTest, default_region_is_surface_rectangle)
 TEST_F(BasicSurfaceTest, default_invisible_surface_doesnt_get_input)
 {
     ms::BasicSurface surface{
+        nullptr /* session */,
         name,
         geom::Rectangle{{0,0}, {100,100}},
         mir_pointer_unconfined,
@@ -334,6 +366,27 @@ TEST_F(BasicSurfaceTest, default_invisible_surface_doesnt_get_input)
 
     EXPECT_FALSE(surface.input_area_contains({50,50}));
     EXPECT_TRUE(surface.input_area_contains({50,50}));
+}
+
+TEST_F(BasicSurfaceTest, surface_doesnt_get_input_outside_clip_area)
+{
+    ms::BasicSurface surface{
+        nullptr /* session */,
+        name,
+        geom::Rectangle{{0,0}, {100,100}},
+        mir_pointer_unconfined,
+        streams,
+        std::shared_ptr<mg::CursorImage>(),
+        report};
+
+    surface.set_clip_area(std::experimental::optional<geom::Rectangle>({{0,0}, {50,50}}));
+
+    EXPECT_FALSE(surface.input_area_contains({75,75}));
+    EXPECT_TRUE(surface.input_area_contains({25,25}));
+
+    surface.set_clip_area(std::experimental::optional<geom::Rectangle>());
+
+    EXPECT_TRUE(surface.input_area_contains({75,75}));
 }
 
 TEST_F(BasicSurfaceTest, set_input_region)
@@ -462,6 +515,7 @@ TEST_F(BasicSurfaceTest, stores_parent)
 {
     auto parent = mt::fake_shared(surface);
     ms::BasicSurface child{
+        nullptr /* session */,
         name,
         geom::Rectangle{{0,0}, {100,100}},
         parent,
@@ -627,6 +681,61 @@ INSTANTIATE_TEST_CASE_P(SurfaceDPIAttributeTest, BasicSurfaceAttributeTest,
 INSTANTIATE_TEST_CASE_P(SurfaceFocusAttributeTest, BasicSurfaceAttributeTest,
    ::testing::Values(surface_focus_test_parameters));
 
+TEST_F(BasicSurfaceTest, default_focus_state)
+{
+    EXPECT_EQ(mir_window_focus_state_unfocused, surface.focus_state());
+}
+
+TEST_F(BasicSurfaceTest, focus_state_can_be_set)
+{
+    surface.set_focus_state(mir_window_focus_state_focused);
+    EXPECT_EQ(mir_window_focus_state_focused, surface.focus_state());
+}
+
+TEST_F(BasicSurfaceTest, notifies_about_focus_state_changes)
+{
+    using namespace testing;
+
+    NiceMock<MockSurfaceObserver> mock_surface_observer;
+
+    EXPECT_CALL(mock_surface_observer, attrib_changed(_, mir_window_attrib_focus, mir_window_focus_state_focused))
+        .Times(1);
+    EXPECT_CALL(mock_surface_observer, attrib_changed(_, mir_window_attrib_focus, mir_window_focus_state_unfocused))
+        .Times(1);
+
+    surface.add_observer(mt::fake_shared(mock_surface_observer));
+
+    surface.set_focus_state(mir_window_focus_state_focused);
+    surface.set_focus_state(mir_window_focus_state_unfocused);
+}
+
+TEST_F(BasicSurfaceTest, does_not_notify_if_focus_state_is_unchanged)
+{
+    using namespace testing;
+
+    NiceMock<MockSurfaceObserver> mock_surface_observer;
+
+    EXPECT_CALL(mock_surface_observer, attrib_changed(_, mir_window_attrib_focus, mir_window_focus_state_focused))
+        .Times(1);
+
+    surface.add_observer(mt::fake_shared(mock_surface_observer));
+
+    surface.set_focus_state(mir_window_focus_state_unfocused); // will not notify, since it is default
+    surface.set_focus_state(mir_window_focus_state_focused);
+    surface.set_focus_state(mir_window_focus_state_focused);
+}
+
+TEST_F(BasicSurfaceTest, throws_on_invalid_focus_state)
+{
+    using namespace testing;
+
+    auto const invalid_state = static_cast<MirWindowFocusState>(mir_window_focus_state_focused + 1);
+
+    EXPECT_THROW({
+            surface.configure(mir_window_attrib_focus, invalid_state);
+        }, std::logic_error);
+}
+
 TEST_F(BasicSurfaceTest, notifies_about_cursor_image_change)
 {
     using namespace testing;
@@ -743,6 +852,51 @@ TEST_F(BasicSurfaceTest, observer_can_trigger_state_change_within_notification)
     surface.add_observer(observer);
 
     surface.set_hidden(true);
+}
+
+
+TEST_F(BasicSurfaceTest, default_application_id)
+{
+    EXPECT_EQ("", surface.application_id());
+}
+
+TEST_F(BasicSurfaceTest, application_id_can_be_set)
+{
+    std::string const id{"test.id"};
+    surface.set_application_id(id);
+    EXPECT_EQ(id, surface.application_id());
+}
+
+TEST_F(BasicSurfaceTest, notifies_about_application_id_changes)
+{
+    using namespace testing;
+
+    std::string const id{"test.id"};
+    NiceMock<MockSurfaceObserver> mock_surface_observer;
+
+    EXPECT_CALL(mock_surface_observer, application_id_set_to(_, id))
+        .Times(1);
+
+    surface.add_observer(mt::fake_shared(mock_surface_observer));
+
+    surface.set_application_id(id);
+}
+
+TEST_F(BasicSurfaceTest, does_not_notify_if_application_id_is_unchanged)
+{
+    using namespace testing;
+
+    std::string const id{"test.id"};
+    NiceMock<MockSurfaceObserver> mock_surface_observer;
+
+    EXPECT_CALL(mock_surface_observer, application_id_set_to(_, id))
+        .Times(1);
+
+    surface.add_observer(mt::fake_shared(mock_surface_observer));
+
+    surface.set_application_id("");
+    surface.set_application_id(id);
+    surface.set_application_id(id);
 }
 
 TEST_F(BasicSurfaceTest, observer_can_remove_itself_within_notification)
@@ -889,6 +1043,35 @@ TEST_F(BasicSurfaceTest, can_set_streams_not_containing_originally_created_with_
     EXPECT_THAT(renderables.size(), Eq(2));
 }
 
+TEST_F(BasicSurfaceTest, does_not_render_if_outside_of_clip_area)
+{
+    using namespace testing;
+    geom::Displacement d0{19,99};
+    geom::Displacement d1{21,101};
+    geom::Displacement d2{20,9};
+    auto buffer_stream0 = std::make_shared<NiceMock<mtd::MockBufferStream>>();
+    auto buffer_stream1 = std::make_shared<NiceMock<mtd::MockBufferStream>>();
+    auto buffer_stream2 = std::make_shared<NiceMock<mtd::MockBufferStream>>();
+
+    std::list<ms::StreamInfo> streams = {
+        { mock_buffer_stream, {0,0}, {}},
+        { buffer_stream0, d0, {} },
+        { buffer_stream1, d1, {} },
+        { buffer_stream2, d2, {} }
+    };
+    surface.set_streams(streams);
+    surface.set_clip_area(std::experimental::optional<geom::Rectangle>({{200,0},{100,100}}));
+
+    auto renderables = surface.generate_renderables(this);
+    ASSERT_THAT(renderables.size(), Eq(0));
+
+    surface.set_clip_area(std::experimental::optional<geom::Rectangle>({{0,0},{100,100}}));
+
+    renderables = surface.generate_renderables(this);
+    ASSERT_THAT(renderables.size(), Eq(4));
+
+}
+
 TEST_F(BasicSurfaceTest, registers_frame_callbacks_on_construction)
 {
     using namespace testing;
@@ -904,6 +1087,7 @@ TEST_F(BasicSurfaceTest, registers_frame_callbacks_on_construction)
     EXPECT_CALL(*buffer_stream1, set_frame_posted_callback(_));
 
     ms::BasicSurface child{
+        nullptr /* session */,
         name,
         geom::Rectangle{{0,0}, {100,100}},
         std::weak_ptr<ms::Surface>{},

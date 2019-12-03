@@ -1,5 +1,5 @@
 /*
- * Copyright © 2012-2014 Canonical Ltd.
+ * Copyright © 2012-2019 Canonical Ltd.
  *
  * This program is free software: you can redistribute it and/or modify it
  * under the terms of the GNU General Public License version 2 or 3,
@@ -59,6 +59,7 @@ class BasicSurface : public Surface
 {
 public:
     BasicSurface(
+        std::shared_ptr<Session> const& session,
         std::string const& name,
         geometry::Rectangle rect,
         MirPointerConfinementState state,
@@ -67,6 +68,7 @@ public:
         std::shared_ptr<SceneReport> const& report);
 
     BasicSurface(
+        std::shared_ptr<Session> const& session,
         std::string const& name,
         geometry::Rectangle rect,
         std::weak_ptr<Surface> const& parent,
@@ -82,8 +84,8 @@ public:
 
     void set_hidden(bool is_hidden);
 
-    geometry::Size size() const override;
-    geometry::Size client_size() const override;
+    geometry::Size window_size() const override;
+    geometry::Size content_size() const override;
 
     std::shared_ptr<frontend::BufferStream> primary_buffer_stream() const override;
     void set_streams(std::list<scene::StreamInfo> const& streams) override;
@@ -118,6 +120,7 @@ public:
     void remove_cursor_image(); // Removes the cursor image without resetting the stream
     std::shared_ptr<graphics::CursorImage> cursor_image() const override;
 
+    /// \deprecated can be removed along with mirclient
     void set_cursor_stream(std::shared_ptr<frontend::BufferStream> const& stream,
                            geometry::Displacement const& hotspot) override;
     void set_cursor_from_buffer(graphics::Buffer& buffer,
@@ -142,17 +145,38 @@ public:
     void placed_relative(geometry::Rectangle const& placement) override;
     void start_drag_and_drop(std::vector<uint8_t> const& handle) override;
 
+    auto depth_layer() const -> MirDepthLayer override;
+    void set_depth_layer(MirDepthLayer depth_layer) override;
+
+    std::experimental::optional<geometry::Rectangle> clip_area() const override;
+    void set_clip_area(std::experimental::optional<geometry::Rectangle> const& area) override;
+
+    auto focus_state() const -> MirWindowFocusState override;
+    void set_focus_state(MirWindowFocusState new_state) override;
+
+    auto application_id() const -> std::string override;
+    void set_application_id(std::string const& application_id) override;
+
+    auto session() const -> std::weak_ptr<Session> override;
+
 private:
-    bool visible(std::unique_lock<std::mutex>&) const;
+    struct ProofOfMutexLock
+    {
+        ProofOfMutexLock(std::lock_guard<std::mutex> const&) {}
+        ProofOfMutexLock(std::unique_lock<std::mutex> const& lock);
+        ProofOfMutexLock(ProofOfMutexLock const&) = delete;
+        ProofOfMutexLock operator=(ProofOfMutexLock const&) = delete;
+    };
+
+    bool visible(ProofOfMutexLock const&) const;
     MirWindowType set_type(MirWindowType t);  // Use configure() to make public changes
     MirWindowState set_state(MirWindowState s);
     int set_dpi(int);
     MirWindowVisibility set_visibility(MirWindowVisibility v);
     int set_swap_interval(int);
-    MirWindowFocusState set_focus_state(MirWindowFocusState f);
     MirOrientationMode set_preferred_orientation(MirOrientationMode mode);
 
-    SurfaceObservers observers;
+    std::shared_ptr<SurfaceObservers> observers = std::make_shared<SurfaceObservers>();
     std::mutex mutable guard;
     std::string surface_name;
     geometry::Rectangle surface_rect;
@@ -177,7 +201,14 @@ private:
     MirOrientationMode pref_orientation_mode = mir_orientation_mode_any;
     MirPointerConfinementState confine_pointer_state_ = mir_pointer_unconfined;
 
+    /// \deprecated can be removed along with mirclient
     std::unique_ptr<CursorStreamImageAdapter> const cursor_stream_adapter;
+
+    MirDepthLayer depth_layer_ = mir_depth_layer_application;
+    std::experimental::optional<geometry::Rectangle> clip_area_;
+    std::string application_id_;
+
+    std::weak_ptr<Session> session_;
 };
 
 }

@@ -23,9 +23,6 @@
 
 #include "wl_surface_role.h"
 
-#include "mir/frontend/buffer_stream_id.h"
-#include "mir/frontend/surface_id.h"
-
 #include "mir/geometry/displacement.h"
 #include "mir/geometry/size.h"
 #include "mir/geometry/point.h"
@@ -41,6 +38,10 @@ namespace graphics
 {
 class WaylandAllocator;
 }
+namespace scene
+{
+class Session;
+}
 namespace shell
 {
 struct StreamSpecification;
@@ -49,11 +50,12 @@ namespace geometry
 {
 class Rectangle;
 }
-
-namespace frontend
+namespace compositor
 {
 class BufferStream;
-class Session;
+}
+namespace frontend
+{
 class WlSurface;
 class WlSubsurface;
 
@@ -94,7 +96,7 @@ class NullWlSurfaceRole : public WlSurfaceRole
 {
 public:
     NullWlSurfaceRole(WlSurface* surface);
-    SurfaceId surface_id() const override;
+    auto scene_surface() const -> std::experimental::optional<std::shared_ptr<scene::Surface>> override;
     void refresh_surface_data_now() override;
     void commit(WlSurfaceState const& state) override;
     void visiblity(bool /*visible*/) override;
@@ -127,11 +129,11 @@ public:
     bool synchronized() const;
     Position transform_point(geometry::Point point);
     wl_resource* raw_resource() const { return resource; }
-    mir::frontend::SurfaceId surface_id() const;
+    auto scene_surface() const -> std::experimental::optional<std::shared_ptr<scene::Surface>>;
 
     void set_role(WlSurfaceRole* role_);
     void clear_role();
-    void set_pending_offset(geometry::Displacement const& offset) { pending.offset = offset; }
+    void set_pending_offset(std::experimental::optional<geometry::Displacement> const& offset);
     std::unique_ptr<WlSurface, std::function<void(WlSurface*)>> add_child(WlSubsurface* child);
     void refresh_surface_data_now();
     void pending_invalidate_surface_data() { pending.invalidate_surface_data(); }
@@ -142,9 +144,8 @@ public:
     void add_destroy_listener(void const* key, std::function<void()> listener);
     void remove_destroy_listener(void const* key);
 
-    std::shared_ptr<mir::frontend::Session> const session;
-    mir::frontend::BufferStreamId const stream_id;
-    std::shared_ptr<mir::frontend::BufferStream> const stream;
+    std::shared_ptr<scene::Session> const session;
+    std::shared_ptr<compositor::BufferStream> const stream;
 
     static WlSurface* from(wl_resource* resource);
 

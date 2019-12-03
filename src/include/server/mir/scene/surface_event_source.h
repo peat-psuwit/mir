@@ -38,12 +38,11 @@ class SurfaceEventSource : public NullSurfaceObserver
 public:
     SurfaceEventSource(
         frontend::SurfaceId id,
-        Surface const& surface,
         OutputPropertiesCache const& outputs,
         std::shared_ptr<frontend::EventSink> const& event_sink);
 
     void attrib_changed(Surface const* surf, MirWindowAttrib attrib, int value) override;
-    void resized_to(Surface const* surf, geometry::Size const& size) override;
+    void content_resized_to(Surface const* surf, geometry::Size const& content_size) override;
     void moved_to(Surface const* surf, geometry::Point const& top_left) override;
     void orientation_set_to(Surface const* surf, MirOrientation orientation) override;
     void client_surface_close_requested(Surface const* surf) override;
@@ -60,7 +59,6 @@ public:
 
 private:
     frontend::SurfaceId const id;
-    Surface const& surface;
     OutputPropertiesCache const& outputs;
     std::weak_ptr<OutputProperties const> last_output;
     std::shared_ptr<frontend::EventSink> const event_sink;

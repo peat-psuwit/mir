@@ -13,20 +13,27 @@
 #include "mir/fd.h"
 #include <wayland-server-core.h>
 
+#include "mir/wayland/wayland_base.h"
+
 namespace mir
 {
 namespace wayland
 {
 
-class XdgShellV6
+class XdgShellV6;
+class XdgPositionerV6;
+class XdgSurfaceV6;
+class XdgToplevelV6;
+class XdgPopupV6;
+
+class XdgShellV6 : public Resource
 {
 public:
     static char const constexpr* interface_name = "zxdg_shell_v6";
-    static int const interface_version = 1;
 
     static XdgShellV6* from(struct wl_resource*);
 
-    XdgShellV6(struct wl_resource* resource);
+    XdgShellV6(struct wl_resource* resource, Version<1>);
     virtual ~XdgShellV6() = default;
 
     void send_ping_event(uint32_t serial) const;
@@ -55,14 +62,12 @@ public:
 
     static bool is_instance(wl_resource* resource);
 
-    class Global
+    class Global : public wayland::Global
     {
     public:
-        Global(wl_display* display, uint32_t max_version);
-        virtual ~Global();
+        Global(wl_display* display, Version<1>);
 
-        wl_global* const global;
-        uint32_t const max_version;
+        auto interface_name() const -> char const* override;
 
     private:
         virtual void bind(wl_resource* new_zxdg_shell_v6) = 0;
@@ -76,15 +81,14 @@ private:
     virtual void pong(uint32_t serial) = 0;
 };
 
-class XdgPositionerV6
+class XdgPositionerV6 : public Resource
 {
 public:
     static char const constexpr* interface_name = "zxdg_positioner_v6";
-    static int const interface_version = 1;
 
     static XdgPositionerV6* from(struct wl_resource*);
 
-    XdgPositionerV6(struct wl_resource* resource);
+    XdgPositionerV6(struct wl_resource* resource, Version<1>);
     virtual ~XdgPositionerV6() = default;
 
     void destroy_wayland_object() const;
@@ -140,15 +144,14 @@ private:
     virtual void set_offset(int32_t x, int32_t y) = 0;
 };
 
-class XdgSurfaceV6
+class XdgSurfaceV6 : public Resource
 {
 public:
     static char const constexpr* interface_name = "zxdg_surface_v6";
-    static int const interface_version = 1;
 
     static XdgSurfaceV6* from(struct wl_resource*);
 
-    XdgSurfaceV6(struct wl_resource* resource);
+    XdgSurfaceV6(struct wl_resource* resource, Version<1>);
     virtual ~XdgSurfaceV6() = default;
 
     void send_configure_event(uint32_t serial) const;
@@ -182,15 +185,14 @@ private:
     virtual void ack_configure(uint32_t serial) = 0;
 };
 
-class XdgToplevelV6
+class XdgToplevelV6 : public Resource
 {
 public:
     static char const constexpr* interface_name = "zxdg_toplevel_v6";
-    static int const interface_version = 1;
 
     static XdgToplevelV6* from(struct wl_resource*);
 
-    XdgToplevelV6(struct wl_resource* resource);
+    XdgToplevelV6(struct wl_resource* resource, Version<1>);
     virtual ~XdgToplevelV6() = default;
 
     void send_configure_event(int32_t width, int32_t height, struct wl_array* states) const;
@@ -249,15 +251,14 @@ private:
     virtual void set_minimized() = 0;
 };
 
-class XdgPopupV6
+class XdgPopupV6 : public Resource
 {
 public:
     static char const constexpr* interface_name = "zxdg_popup_v6";
-    static int const interface_version = 1;
 
     static XdgPopupV6* from(struct wl_resource*);
 
-    XdgPopupV6(struct wl_resource* resource);
+    XdgPopupV6(struct wl_resource* resource, Version<1>);
     virtual ~XdgPopupV6() = default;
 
     void send_configure_event(int32_t x, int32_t y, int32_t width, int32_t height) const;

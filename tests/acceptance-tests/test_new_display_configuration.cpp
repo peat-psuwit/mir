@@ -35,7 +35,7 @@
 #include "mir/test/doubles/stub_session_authorizer.h"
 #include "mir/test/fake_shared.h"
 #include "mir/test/pipe.h"
-#include "mir/test/signal.h"
+#include "mir/test/signal_actions.h"
 
 #include "mir_toolkit/mir_client_library.h"
 
@@ -50,6 +50,7 @@
 namespace mg = mir::graphics;
 namespace geom = mir::geometry;
 namespace mf = mir::frontend;
+namespace ms = mir::scene;
 namespace mtf = mir_test_framework;
 namespace mtd = mir::test::doubles;
 namespace mt = mir::test;
@@ -111,9 +112,9 @@ struct DisplayConfigurationTest : mtf::ConnectedClientWithAWindow
         }
 
         MOCK_METHOD2(session_configuration_applied, void(
-            std::shared_ptr<mf::Session> const&,
+            std::shared_ptr<ms::Session> const&,
             std::shared_ptr<mg::DisplayConfiguration> const&));
-        MOCK_METHOD1(session_configuration_removed, void(std::shared_ptr<mf::Session> const&));
+        MOCK_METHOD1(session_configuration_removed, void(std::shared_ptr<ms::Session> const&));
 
     protected:
         void initial_configuration(
@@ -154,6 +155,12 @@ struct DisplayConfigurationTest : mtf::ConnectedClientWithAWindow
         void catastrophic_configuration_error(
             std::shared_ptr<mg::DisplayConfiguration const> const&,
             std::exception const&) override
+        {
+        }
+
+        void configuration_updated_for_session(
+            std::shared_ptr<ms::Session> const&,
+            std::shared_ptr<mg::DisplayConfiguration const> const&) override
         {
         }
 

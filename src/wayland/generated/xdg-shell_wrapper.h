@@ -13,20 +13,27 @@
 #include "mir/fd.h"
 #include <wayland-server-core.h>
 
+#include "mir/wayland/wayland_base.h"
+
 namespace mir
 {
 namespace wayland
 {
 
-class XdgWmBase
+class XdgWmBase;
+class XdgPositioner;
+class XdgSurface;
+class XdgToplevel;
+class XdgPopup;
+
+class XdgWmBase : public Resource
 {
 public:
     static char const constexpr* interface_name = "xdg_wm_base";
-    static int const interface_version = 1;
 
     static XdgWmBase* from(struct wl_resource*);
 
-    XdgWmBase(struct wl_resource* resource);
+    XdgWmBase(struct wl_resource* resource, Version<1>);
     virtual ~XdgWmBase() = default;
 
     void send_ping_event(uint32_t serial) const;
@@ -55,14 +62,12 @@ public:
 
     static bool is_instance(wl_resource* resource);
 
-    class Global
+    class Global : public wayland::Global
     {
     public:
-        Global(wl_display* display, uint32_t max_version);
-        virtual ~Global();
+        Global(wl_display* display, Version<1>);
 
-        wl_global* const global;
-        uint32_t const max_version;
+        auto interface_name() const -> char const* override;
 
     private:
         virtual void bind(wl_resource* new_xdg_wm_base) = 0;
@@ -76,15 +81,14 @@ private:
     virtual void pong(uint32_t serial) = 0;
 };
 
-class XdgPositioner
+class XdgPositioner : public Resource
 {
 public:
     static char const constexpr* interface_name = "xdg_positioner";
-    static int const interface_version = 1;
 
     static XdgPositioner* from(struct wl_resource*);
 
-    XdgPositioner(struct wl_resource* resource);
+    XdgPositioner(struct wl_resource* resource, Version<1>);
     virtual ~XdgPositioner() = default;
 
     void destroy_wayland_object() const;
@@ -148,15 +152,14 @@ private:
     virtual void set_offset(int32_t x, int32_t y) = 0;
 };
 
-class XdgSurface
+class XdgSurface : public Resource
 {
 public:
     static char const constexpr* interface_name = "xdg_surface";
-    static int const interface_version = 1;
 
     static XdgSurface* from(struct wl_resource*);
 
-    XdgSurface(struct wl_resource* resource);
+    XdgSurface(struct wl_resource* resource, Version<1>);
     virtual ~XdgSurface() = default;
 
     void send_configure_event(uint32_t serial) const;
@@ -190,15 +193,14 @@ private:
     virtual void ack_configure(uint32_t serial) = 0;
 };
 
-class XdgToplevel
+class XdgToplevel : public Resource
 {
 public:
     static char const constexpr* interface_name = "xdg_toplevel";
-    static int const interface_version = 1;
 
     static XdgToplevel* from(struct wl_resource*);
 
-    XdgToplevel(struct wl_resource* resource);
+    XdgToplevel(struct wl_resource* resource, Version<1>);
     virtual ~XdgToplevel() = default;
 
     void send_configure_event(int32_t width, int32_t height, struct wl_array* states) const;
@@ -257,15 +259,14 @@ private:
     virtual void set_minimized() = 0;
 };
 
-class XdgPopup
+class XdgPopup : public Resource
 {
 public:
     static char const constexpr* interface_name = "xdg_popup";
-    static int const interface_version = 1;
 
     static XdgPopup* from(struct wl_resource*);
 
-    XdgPopup(struct wl_resource* resource);
+    XdgPopup(struct wl_resource* resource, Version<1>);
     virtual ~XdgPopup() = default;
 
     void send_configure_event(int32_t x, int32_t y, int32_t width, int32_t height) const;
